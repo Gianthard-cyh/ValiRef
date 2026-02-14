@@ -1,5 +1,8 @@
 # ValiRef
 
+> [!IMPORTANT]
+> 🚧WIP🚧
+
 ValiRef 是一个用于检测论文引用中是否存在幻觉引用的工具。
 
 ValiRef 支持检测多种类型的引用错误，包括：
