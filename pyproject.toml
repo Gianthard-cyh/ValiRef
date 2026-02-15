@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "langchain>=1.2.10",
+    "pymupdf>=1.27.1",
     "python-dotenv>=1.2.1",
     "rich>=14.3.2",
 ]

@@ -10,14 +10,7 @@ from pydantic import BaseModel, Field
 from .schema import Paper
 from .crawler import PaperCrawler
 from ..core.logger import logger
-from ..core.config import DEEPSEEK_API_KEY
-
-# Constants for LLM
-TEMP = 0.7
-MAX_TOKENS = 4096
-TIMEOUT = 60
-MAX_RETRIES = 2
-
+from ..core.config import DEEPSEEK_API_KEY, TEMP, MAX_TOKENS, TIMEOUT, MAX_RETRIES
 
 # --- Output Schemas ---
 

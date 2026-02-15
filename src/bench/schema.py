@@ -17,4 +17,26 @@ class Paper(BaseModel):
     claims: List[str] = Field(default_factory=list, description="List of extracted claims")
     hallucination_type: Optional[str] = Field(None, description="Type of injected hallucination")
     original_paper_id: Optional[str] = Field(None, description="ID of the original paper if hallucinated")
+    venue: Optional[str] = Field(None, description="Venue or Journal where the paper was published")
 
+class PaperList(BaseModel):
+    """
+    A list of research papers.
+    """
+    papers: List[Paper] = Field(default_factory=list, description="List of extracted papers")
+
+class Reference(BaseModel):
+    """
+    Schema representing a cited reference.
+    """
+    title: str = Field(description="Title of the cited paper")
+    authors: List[str] = Field(default_factory=list, description="List of authors")
+    date: str = Field(description="Publication date or year")
+    arxiv_id: Optional[str] = Field(None, description="ArXiv ID if available")
+    venue: Optional[str] = Field(None, description="Venue or Journal where the paper was published")
+
+class ReferenceList(BaseModel):
+    """
+    A list of references.
+    """
+    references: List[Reference] = Field(default_factory=list, description="List of extracted references")
