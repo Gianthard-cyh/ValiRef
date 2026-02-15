@@ -10,7 +10,6 @@ from .config import (
 )
 from .logger import logger
 
-
 class SearchTool:
     """
     Base class for search tools.
@@ -60,7 +59,6 @@ class ScholarlySearch(SearchTool):
     Includes rate limiting to avoid blocking using `ratelimit` library.
     """
 
-    # Limit to 1 call every 20 seconds
     @sleep_and_retry
     @limits(calls=SCHOLAR_RATE_LIMIT_CALLS, period=SCHOLAR_RATE_LIMIT_PERIOD)
     def _search_with_rate_limit(self, query: str):
