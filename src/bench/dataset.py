@@ -1,18 +1,30 @@
 from langchain_deepseek import ChatDeepSeek
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
-import os
 import csv
-from typing import List, Optional
+import random
+from typing import List
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn, TaskID
+from rich.progress import (
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    BarColumn,
+    TaskProgressColumn,
+    TimeRemainingColumn,
+    TaskID,
+)
 from pydantic import BaseModel, Field
 from .schema import Paper
 from .crawler import PaperCrawler
 from ..core.logger import logger
-from ..core.config import DEEPSEEK_API_KEY, TEMP, MAX_TOKENS, TIMEOUT, MAX_RETRIES
-
-# --- Output Schemas ---
+from ..core.config import (
+    DEEPSEEK_API_KEY, 
+    LLM_MODEL,
+    LLM_TEMPERATURE,
+    LLM_MAX_TOKENS,
+    LLM_TIMEOUT,
+    LLM_MAX_RETRIES
+)
 
 class FakePaper(BaseModel):
     title: str = Field(description="The title of the fake paper")
@@ -20,9 +32,7 @@ class FakePaper(BaseModel):
     authors: List[str] = Field(
         description="List of plausible authors for the fake paper"
     )
-    published_date: str = Field(
-        description="A plausible publication date (YYYY-MM-DD)"
-    )
+    published_date: str = Field(description="A plausible publication date (YYYY-MM-DD)")
 
 
 class FakeAuthors(BaseModel):
@@ -77,9 +87,6 @@ class BenchmarkDataset:
             logger.error(f"Failed to export dataset to CSV: {e}")
 
 
-import random
-
-
 class BenchmarkDatasetFactory:
     """
     Factory class for creating BenchmarkDataset instances.
@@ -92,11 +99,11 @@ class BenchmarkDatasetFactory:
             raise ValueError("DEEPSEEK_API_KEY is not set")
 
         self.model = ChatDeepSeek(
-            model="deepseek-chat",
-            temperature=TEMP,
-            max_tokens=MAX_TOKENS,
-            timeout=TIMEOUT,
-            max_retries=MAX_RETRIES,
+            model=LLM_MODEL,
+            temperature=LLM_TEMPERATURE,
+            max_tokens=LLM_MAX_TOKENS,
+            timeout=LLM_TIMEOUT,
+            max_retries=LLM_MAX_RETRIES,
             api_key=DEEPSEEK_API_KEY,
         )
 
@@ -142,10 +149,30 @@ class BenchmarkDatasetFactory:
 
             with ThreadPoolExecutor(max_workers=4) as executor:
                 futures = {
-                    executor.submit(self._generate_fabrications_batch, dataset.dataset, progress, task_fab): "Fabrication",
-                    executor.submit(self._generate_attribution_errors_batch, dataset.dataset, progress, task_attr): "AttributionError",
-                    executor.submit(self._generate_irrelevances_batch, dataset.dataset, progress, task_irr): "Irrelevance",
-                    executor.submit(self._generate_counterfactuals_batch, dataset.dataset, progress, task_count): "Counterfactual"
+                    executor.submit(
+                        self._generate_fabrications_batch,
+                        dataset.dataset,
+                        progress,
+                        task_fab,
+                    ): "Fabrication",
+                    executor.submit(
+                        self._generate_attribution_errors_batch,
+                        dataset.dataset,
+                        progress,
+                        task_attr,
+                    ): "AttributionError",
+                    executor.submit(
+                        self._generate_irrelevances_batch,
+                        dataset.dataset,
+                        progress,
+                        task_irr,
+                    ): "Irrelevance",
+                    executor.submit(
+                        self._generate_counterfactuals_batch,
+                        dataset.dataset,
+                        progress,
+                        task_count,
+                    ): "Counterfactual",
                 }
 
                 for future in as_completed(futures):
@@ -153,7 +180,9 @@ class BenchmarkDatasetFactory:
                     try:
                         results = future.result()
                         hallucinated_papers.extend(results)
-                        logger.info(f"Completed injection for {h_type}. Generated {len(results)} papers.")
+                        logger.info(
+                            f"Completed injection for {h_type}. Generated {len(results)} papers."
+                        )
                     except Exception as e:
                         logger.error(f"Error in hallucination batch for {h_type}: {e}")
 
@@ -162,7 +191,9 @@ class BenchmarkDatasetFactory:
         )
         return BenchmarkDataset(hallucinated_papers)
 
-    def _generate_fabrications_batch(self, papers: List[Paper], progress: Progress, task_id: TaskID) -> List[Paper]:
+    def _generate_fabrications_batch(
+        self, papers: List[Paper], progress: Progress, task_id: TaskID
+    ) -> List[Paper]:
         """Batch generate fake papers."""
         prompt = ChatPromptTemplate.from_template(
             "Based on the following abstract, generate a completely FAKE paper details "
@@ -175,13 +206,15 @@ class BenchmarkDatasetFactory:
 
         generated_papers = []
         batch_size = 10
-        
+
         for i in range(0, len(papers), batch_size):
-            batch_papers = papers[i:i + batch_size]
+            batch_papers = papers[i : i + batch_size]
             inputs = [{"paper": paper} for paper in batch_papers]
-            
+
             try:
-                results = chain.batch(inputs, config={"max_concurrency": 5}, return_exceptions=True)
+                results = chain.batch(
+                    inputs, config={"max_concurrency": 5}, return_exceptions=True
+                )
             except Exception as e:
                 logger.error(f"Batch execution failed for Fabrication: {e}")
                 progress.update(task_id, advance=len(batch_papers))
@@ -189,7 +222,9 @@ class BenchmarkDatasetFactory:
 
             for paper, result in zip(batch_papers, results):
                 if isinstance(result, Exception) or result is None:
-                    logger.error(f"Error generating Fabrication for {paper.id}: {result}")
+                    logger.error(
+                        f"Error generating Fabrication for {paper.id}: {result}"
+                    )
                     continue
 
                 try:
@@ -211,13 +246,17 @@ class BenchmarkDatasetFactory:
                     )
                     generated_papers.append(new_paper)
                 except Exception as e:
-                    logger.error(f"Error creating Fabrication object for {paper.id}: {e}")
-            
+                    logger.error(
+                        f"Error creating Fabrication object for {paper.id}: {e}"
+                    )
+
             progress.update(task_id, advance=len(batch_papers))
 
         return generated_papers
 
-    def _generate_attribution_errors_batch(self, papers: List[Paper], progress: Progress, task_id: TaskID) -> List[Paper]:
+    def _generate_attribution_errors_batch(
+        self, papers: List[Paper], progress: Progress, task_id: TaskID
+    ) -> List[Paper]:
         """Batch generate attribution errors."""
         prompt = ChatPromptTemplate.from_template(
             "Based on the following abstract, generate a list of 3-5 plausible author names "
@@ -233,14 +272,16 @@ class BenchmarkDatasetFactory:
         batch_size = 10
 
         for i in range(0, len(papers), batch_size):
-            batch_papers = papers[i:i + batch_size]
+            batch_papers = papers[i : i + batch_size]
             inputs = [
                 {"abstract": paper.abstract, "real_authors": ", ".join(paper.authors)}
                 for paper in batch_papers
             ]
 
             try:
-                results = chain.batch(inputs, config={"max_concurrency": 5}, return_exceptions=True)
+                results = chain.batch(
+                    inputs, config={"max_concurrency": 5}, return_exceptions=True
+                )
             except Exception as e:
                 logger.error(f"Batch execution failed for AttributionError: {e}")
                 progress.update(task_id, advance=len(batch_papers))
@@ -248,7 +289,9 @@ class BenchmarkDatasetFactory:
 
             for paper, result in zip(batch_papers, results):
                 if isinstance(result, Exception) or result is None:
-                    logger.error(f"Error generating AttributionError for {paper.id}: {result}")
+                    logger.error(
+                        f"Error generating AttributionError for {paper.id}: {result}"
+                    )
                     continue
 
                 try:
@@ -259,13 +302,17 @@ class BenchmarkDatasetFactory:
                     new_paper.original_paper_id = paper.id
                     generated_papers.append(new_paper)
                 except Exception as e:
-                    logger.error(f"Error creating AttributionError object for {paper.id}: {e}")
-            
+                    logger.error(
+                        f"Error creating AttributionError object for {paper.id}: {e}"
+                    )
+
             progress.update(task_id, advance=len(batch_papers))
 
         return generated_papers
 
-    def _generate_irrelevances_batch(self, papers: List[Paper], progress: Progress, task_id: TaskID) -> List[Paper]:
+    def _generate_irrelevances_batch(
+        self, papers: List[Paper], progress: Progress, task_id: TaskID
+    ) -> List[Paper]:
         """Batch generate irrelevant claims."""
         if len(papers) < 2:
             progress.update(task_id, advance=len(papers))
@@ -288,12 +335,12 @@ class BenchmarkDatasetFactory:
         batch_size = 10
 
         for i in range(0, len(papers), batch_size):
-            batch_papers = papers[i:i + batch_size]
-            
+            batch_papers = papers[i : i + batch_size]
+
             # Prepare inputs for this batch
             inputs = []
             target_papers = []
-            
+
             for paper in batch_papers:
                 # Pick a random other paper
                 other_paper = random.choice(papers)
@@ -301,11 +348,13 @@ class BenchmarkDatasetFactory:
                 while other_paper.id == paper.id and attempts < 10:
                     other_paper = random.choice(papers)
                     attempts += 1
-                
+
                 if other_paper.id == paper.id:
                     continue
 
-                inputs.append({"title": other_paper.title, "abstract": other_paper.abstract})
+                inputs.append(
+                    {"title": other_paper.title, "abstract": other_paper.abstract}
+                )
                 target_papers.append(paper)
 
             if not inputs:
@@ -313,7 +362,9 @@ class BenchmarkDatasetFactory:
                 continue
 
             try:
-                results = chain.batch(inputs, config={"max_concurrency": 5}, return_exceptions=True)
+                results = chain.batch(
+                    inputs, config={"max_concurrency": 5}, return_exceptions=True
+                )
             except Exception as e:
                 logger.error(f"Batch execution failed for Irrelevance: {e}")
                 progress.update(task_id, advance=len(batch_papers))
@@ -324,34 +375,44 @@ class BenchmarkDatasetFactory:
                 irrelevant_claim = ""
 
                 if isinstance(result, Exception) or result is None:
-                    logger.error(f"Error generating Irrelevance for {paper.id}: {result}")
+                    logger.error(
+                        f"Error generating Irrelevance for {paper.id}: {result}"
+                    )
                     # Fallback
                     irrelevant_claim = f"Recent studies have explored various methods. For example, {citation_marker} proposes a novel approach in this domain."
                 else:
                     irrelevant_claim = result.context
-                    irrelevant_claim = irrelevant_claim.replace("<THIS PAPER>", citation_marker)
-                    irrelevant_claim = irrelevant_claim.replace("[THIS PAPER]", citation_marker)
-                    irrelevant_claim = irrelevant_claim.replace("this paper", citation_marker)
+                    irrelevant_claim = irrelevant_claim.replace(
+                        "<THIS PAPER>", citation_marker
+                    )
+                    irrelevant_claim = irrelevant_claim.replace(
+                        "[THIS PAPER]", citation_marker
+                    )
+                    irrelevant_claim = irrelevant_claim.replace(
+                        "this paper", citation_marker
+                    )
 
                 try:
                     new_paper = paper.model_copy()
                     if random.random() < 0.5:
-                        new_paper.id = (
-                            f"{paper.id[:-2]}{str((int(paper.id[-2:]) + 11) % 100).zfill(2)}"
-                        )
+                        new_paper.id = f"{paper.id[:-2]}{str((int(paper.id[-2:]) + 11) % 100).zfill(2)}"
                     new_paper.url = f"http://arxiv.org/abs/{new_paper.id}"
                     new_paper.claims = [irrelevant_claim]
                     new_paper.hallucination_type = "Irrelevance"
                     new_paper.original_paper_id = paper.id
                     generated_papers.append(new_paper)
                 except Exception as e:
-                    logger.error(f"Error creating Irrelevance object for {paper.id}: {e}")
-            
+                    logger.error(
+                        f"Error creating Irrelevance object for {paper.id}: {e}"
+                    )
+
             progress.update(task_id, advance=len(batch_papers))
 
         return generated_papers
 
-    def _generate_counterfactuals_batch(self, papers: List[Paper], progress: Progress, task_id: TaskID) -> List[Paper]:
+    def _generate_counterfactuals_batch(
+        self, papers: List[Paper], progress: Progress, task_id: TaskID
+    ) -> List[Paper]:
         """Batch generate counterfactual claims."""
         prompt = ChatPromptTemplate.from_template(
             "Based on the following abstract, write a short paragraph (2-3 sentences) that cites this paper. "
@@ -369,11 +430,13 @@ class BenchmarkDatasetFactory:
         batch_size = 10
 
         for i in range(0, len(papers), batch_size):
-            batch_papers = papers[i:i + batch_size]
+            batch_papers = papers[i : i + batch_size]
             inputs = [{"abstract": paper.abstract} for paper in batch_papers]
 
             try:
-                results = chain.batch(inputs, config={"max_concurrency": 5}, return_exceptions=True)
+                results = chain.batch(
+                    inputs, config={"max_concurrency": 5}, return_exceptions=True
+                )
             except Exception as e:
                 logger.error(f"Batch execution failed for Counterfactual: {e}")
                 progress.update(task_id, advance=len(batch_papers))
@@ -381,7 +444,9 @@ class BenchmarkDatasetFactory:
 
             for paper, result in zip(batch_papers, results):
                 if isinstance(result, Exception) or result is None:
-                    logger.error(f"Error generating Counterfactual for {paper.id}: {result}")
+                    logger.error(
+                        f"Error generating Counterfactual for {paper.id}: {result}"
+                    )
                     continue
 
                 try:
@@ -398,8 +463,10 @@ class BenchmarkDatasetFactory:
                     new_paper.original_paper_id = paper.id
                     generated_papers.append(new_paper)
                 except Exception as e:
-                    logger.error(f"Error creating Counterfactual object for {paper.id}: {e}")
-            
+                    logger.error(
+                        f"Error creating Counterfactual object for {paper.id}: {e}"
+                    )
+
             progress.update(task_id, advance=len(batch_papers))
 
         return generated_papers

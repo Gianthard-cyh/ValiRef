@@ -9,14 +9,22 @@ from src.bench.dataset import BenchmarkDatasetFactory
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate hallucinated dataset from ArXiv papers.")
-    parser.add_argument("--topic", type=str, default="cs.CL", help="ArXiv topic code (e.g., cs.CL)")
-    parser.add_argument("--count", type=int, default=1000, help="Number of papers to crawl")
-    parser.add_argument("--output", type=str, default="data/dataset.csv", help="Output CSV file path")
-    
+    parser = argparse.ArgumentParser(
+        description="Generate hallucinated dataset from ArXiv papers."
+    )
+    parser.add_argument(
+        "--topic", type=str, default="cs.CL", help="ArXiv topic code (e.g., cs.CL)"
+    )
+    parser.add_argument(
+        "--count", type=int, default=1000, help="Number of papers to crawl"
+    )
+    parser.add_argument(
+        "--output", type=str, default="data/dataset.csv", help="Output CSV file path"
+    )
+
     args = parser.parse_args()
 
-    print(f"Initializing dataset factory...")
+    print("Initializing dataset factory...")
     try:
         factory = BenchmarkDatasetFactory()
     except ValueError as e:
@@ -35,7 +43,9 @@ def main():
     print("Injecting hallucinations...")
     try:
         hallucinated_dataset = factory.hallucinate(dataset)
-        print(f"Hallucination injection complete. Total papers: {len(hallucinated_dataset)}")
+        print(
+            f"Hallucination injection complete. Total papers: {len(hallucinated_dataset)}"
+        )
     except Exception as e:
         print(f"Error injecting hallucinations: {e}")
         return
@@ -46,6 +56,7 @@ def main():
         print(f"Successfully saved dataset to {args.output}")
     except Exception as e:
         print(f"Error saving dataset: {e}")
+
 
 if __name__ == "__main__":
     main()

@@ -1,21 +1,31 @@
 from abc import ABC, abstractmethod
-from typing import List, Union, Any
+from typing import List
 import fitz  # pymupdf
 from langchain_deepseek import ChatDeepSeek
 from langchain_core.prompts import ChatPromptTemplate
 
-from ..bench.schema import Paper, PaperList, ReferenceList
-from .config import DEEPSEEK_API_KEY, TEMP, MAX_TOKENS, TIMEOUT, MAX_RETRIES, EXTRACTION_CHAR_LIMIT
+from ..bench.schema import Paper, ReferenceList
+from .config import (
+    DEEPSEEK_API_KEY,
+    LLM_MODEL,
+    LLM_TEMPERATURE,
+    LLM_MAX_TOKENS,
+    LLM_TIMEOUT,
+    LLM_MAX_RETRIES,
+    EXTRACTION_CHAR_LIMIT,
+)
 from .logger import logger
 
 """
 Extract structured information from the input
 """
 
+
 class Extractor(ABC):
     """
     Abstract base class for extractors
     """
+
     @abstractmethod
     def extract(self, *args) -> List[Paper]:
         """
@@ -35,13 +45,13 @@ class TextExtractor(Extractor):
     def __init__(self):
         if DEEPSEEK_API_KEY is None:
             raise ValueError("DEEPSEEK_API_KEY is not set")
-        
+
         self.model = ChatDeepSeek(
-            model="deepseek-chat",
-            temperature=TEMP,
-            max_tokens=MAX_TOKENS,
-            timeout=TIMEOUT,
-            max_retries=MAX_RETRIES,
+            model=LLM_MODEL,
+            temperature=LLM_TEMPERATURE,
+            max_tokens=LLM_MAX_TOKENS,
+            timeout=LLM_TIMEOUT,
+            max_retries=LLM_MAX_RETRIES,
             api_key=DEEPSEEK_API_KEY,
         )
 
@@ -58,15 +68,15 @@ class TextExtractor(Extractor):
             "\n"
             "Text Segment:\n{text}"
         )
-        
+
         # Smart truncation: Look for "References" or "Bibliography"
-        truncated_text = text[-EXTRACTION_CHAR_LIMIT:] # Default fallback
-        
+        truncated_text = text[-EXTRACTION_CHAR_LIMIT:]  # Default fallback
+
         # Search from the end backwards to find the last occurrence (usually the section header)
         # Check common headers
         headers = ["References", "Bibliography", "REFERENCES", "BIBLIOGRAPHY"]
         found_pos = -1
-        
+
         for header in headers:
             # Search in the last 50% of text to avoid finding it in Table of Contents or Intro
             search_start = len(text) // 2
@@ -74,29 +84,31 @@ class TextExtractor(Extractor):
             if pos != -1:
                 if found_pos == -1 or pos > found_pos:
                     found_pos = pos
-        
+
         if found_pos != -1:
             # Take from the header to the end
             # Also include a bit of context before just in case
             start_pos = max(0, found_pos)
             truncated_text = text[start_pos:]
-            
+
             # If the resulting text is still too long, truncate it
             if len(truncated_text) > EXTRACTION_CHAR_LIMIT:
                 truncated_text = truncated_text[:EXTRACTION_CHAR_LIMIT]
         else:
-             # Fallback to last N chars
-             truncated_text = text[-EXTRACTION_CHAR_LIMIT:]
+            # Fallback to last N chars
+            truncated_text = text[-EXTRACTION_CHAR_LIMIT:]
 
         structured_llm = self.model.with_structured_output(ReferenceList)
         chain = prompt | structured_llm
-        
+
         result = chain.invoke({"text": truncated_text})
-        
+
         if result is None:
-            logger.warning("Failed to extract papers: LLM returned None. The references might be outside the truncated text window.")
+            logger.warning(
+                "Failed to extract papers: LLM returned None. The references might be outside the truncated text window."
+            )
             return []
-            
+
         papers = []
         for ref in result.references:
             # Convert Reference to Paper
@@ -108,11 +120,13 @@ class TextExtractor(Extractor):
                 authors=ref.authors,
                 published_date=ref.date,
                 url=f"https://arxiv.org/abs/{ref.arxiv_id}" if ref.arxiv_id else "N/A",
-                pdf_url=f"https://arxiv.org/pdf/{ref.arxiv_id}.pdf" if ref.arxiv_id else None,
-                venue=ref.venue
+                pdf_url=f"https://arxiv.org/pdf/{ref.arxiv_id}.pdf"
+                if ref.arxiv_id
+                else None,
+                venue=ref.venue,
             )
             papers.append(paper)
-            
+
         return papers
 
     def extract_batch(self, texts: List[str]) -> List[List[Paper]]:
@@ -141,7 +155,7 @@ class PDFExtractor(Extractor):
         text = ""
         for page in doc:
             text += page.get_text()
-        
+
         return self.text_extractor.extract(text)
 
     def extract_batch(self, file_paths: List[str]) -> List[List[Paper]]:
