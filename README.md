@@ -1,8 +1,9 @@
-<img src="assets/SVG/Square.svg" width="150" align="right" />
 
 # ValiRef
 
-<br clear="left"/>
+<div align="center">
+  <img src="assets/SVG/Square.svg" width="150" />
+</div>
 
 > [!IMPORTANT]
 > 🚧WIP🚧
