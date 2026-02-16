@@ -1,3 +1,5 @@
+<img src="assets/SVG/Square.svg" align="right" width="150" />
+
 # ValiRef
 
 > [!IMPORTANT]
