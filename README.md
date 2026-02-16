@@ -1,6 +1,13 @@
-<img src="assets/SVG/Square.svg" align="right" width="150" />
-
-# ValiRef
+<table>
+  <tr>
+    <td width="80%" style="border: none;">
+      <h1>ValiRef</h1>
+    </td>
+    <td width="20%" align="center" style="border: none;">
+      <img src="assets/SVG/Square.svg" width="150" />
+    </td>
+  </tr>
+</table>
 
 > [!IMPORTANT]
 > 🚧WIP🚧
