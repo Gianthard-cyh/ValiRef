@@ -1,5 +1,6 @@
 import os
 from dotenv import load_dotenv
+from .logger import logger
 
 # Load environment variables from .env file
 load_dotenv()
@@ -7,6 +8,18 @@ load_dotenv()
 # API Keys
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 SERPAPI_API_KEY = os.environ.get("SERPAPI_API_KEY")
+SEMANTIC_SCHOLAR_API_KEY = os.environ.get("SEMANTIC_SCHOLAR_API_KEY")
+
+# Observability (LangSmith)
+LANGCHAIN_TRACING_V2 = os.environ.get("LANGCHAIN_TRACING_V2", "false").lower() == "true"
+LANGCHAIN_API_KEY = os.environ.get("LANGCHAIN_API_KEY")
+LANGCHAIN_PROJECT = os.environ.get("LANGCHAIN_PROJECT", "ValiRef")
+
+if LANGCHAIN_TRACING_V2 and not LANGCHAIN_API_KEY:
+    raise ValueError("LANGCHAIN_API_KEY is required when LANGCHAIN_TRACING_V2 is enabled")
+
+if LANGCHAIN_TRACING_V2:
+    logger.info("LangSmith tracing enabled")
 
 # LLM Configuration
 LLM_MODEL = "deepseek-chat"
@@ -27,4 +40,7 @@ SCHOLAR_RATE_LIMIT_PERIOD = 0.5
 
 # Search Configuration
 ARXIV_SEARCH_LIMIT = 5
-SCHOLAR_SEARCH_LIMIT = 3
+SCHOLAR_SEARCH_LIMIT = 5
+SEMANTIC_SCHOLAR_SEARCH_LIMIT = 20
+OPENREVIEW_SEARCH_LIMIT = 5
+OPENALEX_SEARCH_LIMIT = 5

@@ -9,15 +9,27 @@ dependencies = [
     "google-search-results>=2.4.2",
     "langchain>=1.2.10",
     "langgraph>=1.0.8",
+    "openreview-py>=1.57.0",
     "pymupdf>=1.27.1",
     "python-dotenv>=1.2.1",
     "ratelimit>=2.2.1",
     "rich>=14.3.2",
     "scholarly>=1.7.11",
+    "semanticscholar>=0.11.0",
 ]
 
 [dependency-groups]
 dev = [
     "langchain-deepseek>=1.0.1",
     "ruff>=0.15.1",
+    "pytest>=9.0.0",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = "."
+python_files = "test_*.py"
+markers = [
+    "integration: marks tests as integration tests (slow, requires network)",
+]
+addopts = "-v -m 'not integration'"

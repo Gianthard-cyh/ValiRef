@@ -8,7 +8,9 @@ console = Console()
 
 def setup_logger(name: str = "valiref", level: int = logging.INFO) -> logging.Logger:
     """
-    Configures and returns a logger instance using Rich.
+    Configures the root logger using basicConfig and returns a specific logger instance.
+    This ensures a single handler at the root level, preventing double logging
+    and providing consistent formatting across the application.
 
     Args:
         name: The name of the logger.
@@ -17,30 +19,25 @@ def setup_logger(name: str = "valiref", level: int = logging.INFO) -> logging.Lo
     Returns:
         A configured logging.Logger instance.
     """
+    logging.basicConfig(
+        level=level,
+        format="%(message)s",
+        datefmt="[%X]",
+        handlers=[
+            RichHandler(
+                console=console,
+                rich_tracebacks=True,
+                markup=True,
+                show_time=True,
+                show_path=True,
+            )
+        ],
+        force=True
+    )
+
+    # Get the specific logger
     logger = logging.getLogger(name)
-
-    # Check if the logger already has handlers to avoid duplicate logs
-    if not logger.handlers:
-        logger.setLevel(level)
-
-        # Create Rich handler
-        handler = RichHandler(
-            console=console,
-            rich_tracebacks=True,
-            markup=True,
-            show_time=True,
-            show_path=False,
-        )
-        handler.setLevel(level)
-
-        # Format is handled by RichHandler, but we can set a basic one if needed
-        # For RichHandler, it ignores the format string mostly, focusing on the message
-        formatter = logging.Formatter("%(message)s", datefmt="[%X]")
-        handler.setFormatter(formatter)
-
-        # Add handler to logger
-        logger.addHandler(handler)
-
+    logger.setLevel(level)
     return logger
 
 
