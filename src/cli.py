@@ -6,6 +6,7 @@ from src.core.pipeline import ValidationPipeline
 from src.cli_callbacks import CliCallback
 import logging
 import asyncio
+import json
 
 # Configure logging to suppress debug output by default
 # logging.basicConfig(level=logging.INFO) # Removed to avoid conflict with internal logger configuration
@@ -57,7 +58,6 @@ def validate(
         results = asyncio.run(run_pipeline())
         
         if output_json:
-            import json
             console.print(json.dumps(results, indent=2))
         else:
             _print_results(results)
