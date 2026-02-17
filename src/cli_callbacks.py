@@ -26,7 +26,7 @@ class CliCallback(ValidationCallback):
     def on_extraction_end(self, references: List[Paper]):
         if self.extraction_task is not None:
             self.progress.update(self.extraction_task, completed=1, total=1, visible=False)
-        self.console.print(f"[green]✓[/green] Extracted {len(references)} references.")
+        self.console.print(f"Extracted {len(references)} references.")
 
     def on_validation_start(self, total_references: int):
         self.validation_task = self.progress.add_task("Validating references...", total=total_references)

@@ -57,31 +57,28 @@ class HallucinationDetector:
         """Initialize and return the list of tools available to the agent."""
         return [
             StructuredTool.from_function(
-                func=self.arxiv_search_instance.search,
                 coroutine=self.arxiv_search_instance.asearch,
                 name="arxiv_search",
                 description="Search ArXiv for papers matching the query. Useful for finding physics, computer science, and math papers. Returns a list of dictionaries with paper details.",
             ),
             # StructuredTool.from_function(
-            #     func=self.scholar_search_instance.search,
+            #     func=None,
             #     coroutine=self.scholar_search_instance.asearch,
             #     name="scholar_search",
             #     description="Search Google Scholar for papers matching the query. Useful for finding papers from a wide range of academic disciplines. NOTE: This tool is rate-limited to 1 request every 20 seconds. Returns a list of dictionaries with paper details.",
             # ),
             # StructuredTool.from_function(
-            #     func=self.semanticscholar_search_instance.search,
+            #     func=None,
             #     coroutine=self.semanticscholar_search_instance.asearch,
             #     name="semanticscholar_search",
             #     description="Search Semantic Scholar for papers matching the query. Good for CS/AI papers. Returns a list of dictionaries with paper details.",
             # ),
             StructuredTool.from_function(
-                func=self.openreview_search_instance.search,
                 coroutine=self.openreview_search_instance.asearch,
                 name="openreview_search",
                 description="Search OpenReview for papers matching the query. Useful for finding papers in venues like NeurIPS, ICLR, ICML. Returns a list of dictionaries with paper details.",
             ),
             StructuredTool.from_function(
-                func=self.openalex_search_instance.search,
                 coroutine=self.openalex_search_instance.asearch,
                 name="openalex_search",
                 description="Search OpenAlex for papers matching the query. A very large open database of scientific papers. Returns a list of dictionaries with paper details.",
@@ -174,6 +171,13 @@ class HallucinationDetector:
         Check if a single reference is valid or hallucinated using a ReAct Agent
         asynchronously.
         """
+        return await self.acheck_reference(reference)
+
+    async def acheck_reference(self, reference: Paper) -> ValidationResult:
+        """
+        Check if a single reference is valid or hallucinated using a ReAct Agent
+        asynchronously.
+        """
         logger.info(f"Checking reference (async): {reference.title}")
 
         user_prompt = (
@@ -186,6 +190,7 @@ class HallucinationDetector:
         )
 
         try:
+            # Asynchronous invoke
             response = await self.agent_executor.ainvoke(
                 {
                     "messages": [
@@ -195,6 +200,10 @@ class HallucinationDetector:
                 }
             )
             return self._parse_agent_response(response)
+
+        except KeyboardInterrupt:
+            logger.warning("Validation interrupted by user.")
+            raise
         except Exception as e:
             logger.error(f"Agent validation failed: {e}")
             return ValidationResult(

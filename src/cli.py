@@ -8,9 +8,6 @@ import logging
 import asyncio
 import json
 
-# Configure logging to suppress debug output by default
-# logging.basicConfig(level=logging.INFO) # Removed to avoid conflict with internal logger configuration
-
 app = typer.Typer(
     name="valiref",
     help="ValiRef: A tool for validating references in PDF documents.",

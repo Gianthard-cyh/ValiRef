@@ -3,6 +3,7 @@ import random
 import threading
 import asyncio
 from typing import List, Dict, Callable
+import xml.etree.ElementTree as ET
 import arxiv
 from scholarly import scholarly
 from ratelimit import limits, sleep_and_retry
@@ -44,61 +45,16 @@ class SearchTool:
     def _state(self):
         return self._rate_limit_states[self.__class__]
 
-    def search(self, query: str, limit: int = 5) -> List[Dict]:
-        """Synchronous search method (for compatibility)."""
-        return self._search_with_retry(self._perform_search, query, limit)
-
     async def asearch(self, query: str, limit: int = 5) -> List[Dict]:
         """Asynchronous search method."""
         return await self._asearch_with_retry(self._perform_asearch, query, limit)
 
-    def _perform_search(self, query: str, limit: int) -> List[Dict]:
-        """Implement synchronous search logic."""
-        raise NotImplementedError
-
     async def _perform_asearch(self, query: str, limit: int) -> List[Dict]:
         """
         Implement asynchronous search logic. 
-        Default implementation wraps sync search in a thread executor.
-        Subclasses should override this if they can support native async.
+        Subclasses should override this method.
         """
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, self._perform_search, query, limit)
-
-    def _search_with_retry(self, func: Callable, *args, **kwargs) -> List[Dict]:
-        """
-        Executes the search function with exponential backoff (sync version).
-        """
-        retries = 3
-        base_backoff = 2.0
-        
-        for i in range(retries + 1):
-            state = self._state
-            with state['lock']:
-                wait_time = state['backoff_until'] - time.time()
-            
-            if wait_time > 0:
-                sleep_duration = wait_time + random.uniform(0.1, 0.5)
-                logger.info(f"[{self.__class__.__name__}] Global backoff active. Sleeping {sleep_duration:.2f}s...")
-                time.sleep(sleep_duration)
-
-            try:
-                return func(*args, **kwargs)
-            except Exception as e:
-                if i == retries:
-                    logger.error(f"[{self.__class__.__name__}] Failed after {retries} retries: {str(e)}")
-                    return []
-                
-                backoff_duration = (base_backoff * (2 ** i)) + random.uniform(0, 1)
-                
-                with state['lock']:
-                    new_backoff_until = time.time() + backoff_duration
-                    if new_backoff_until > state['backoff_until']:
-                        state['backoff_until'] = new_backoff_until
-                
-                logger.warning(f"[{self.__class__.__name__}] Error: {str(e)}. Retrying in {backoff_duration:.2f}s...")
-                time.sleep(backoff_duration)
-        return []
+        raise NotImplementedError
 
     async def _asearch_with_retry(self, func: Callable, *args, **kwargs) -> List[Dict]:
         """
@@ -139,23 +95,56 @@ class SearchTool:
 
 class ArxivSearch(SearchTool):
     """Tool to search ArXiv for papers."""
-    def _perform_search(self, query: str, limit: int = ARXIV_SEARCH_LIMIT) -> List[Dict]:
-        client = arxiv.Client()
-        search = arxiv.Search(
-            query=query, max_results=limit, sort_by=arxiv.SortCriterion.Relevance
-        )
-        results = []
-        for result in client.results(search):
-            results.append({
-                "title": result.title,
-                "authors": [a.name for a in result.authors],
-                "published": result.published.strftime("%Y-%m-%d"),
-                "summary": result.summary,
-                "pdf_url": result.pdf_url,
-                "arxiv_id": result.entry_id.split("/")[-1],
-                "source": "arxiv",
-            })
-        return results
+    async def _perform_asearch(self, query: str, limit: int) -> List[Dict]:
+        """Async implementation of ArXiv search using httpx and XML parsing."""
+        logger.info(f"Searching ArXiv (Async) for: {query}")
+        url = "https://export.arxiv.org/api/query"
+        params = {
+            "search_query": f"all:{query}",
+            "start": 0,
+            "max_results": limit,
+            "sortBy": "relevance",
+            "sortOrder": "descending"
+        }
+        
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            
+            # Parse XML response
+            try:
+                root = ET.fromstring(response.content)
+                # Define namespace
+                ns = {'atom': 'http://www.w3.org/2005/Atom', 'arxiv': 'http://arxiv.org/schemas/atom'}
+                
+                results = []
+                for entry in root.findall('atom:entry', ns):
+                    title = entry.find('atom:title', ns).text.strip().replace('\n', ' ')
+                    summary = entry.find('atom:summary', ns).text.strip().replace('\n', ' ')
+                    published = entry.find('atom:published', ns).text[:10]
+                    
+                    authors = [a.find('atom:name', ns).text for a in entry.findall('atom:author', ns)]
+                    
+                    pdf_url = None
+                    for link in entry.findall('atom:link', ns):
+                        if link.attrib.get('title') == 'pdf':
+                            pdf_url = link.attrib.get('href')
+                            
+                    arxiv_id = entry.find('atom:id', ns).text.split('/abs/')[-1]
+                    
+                    results.append({
+                        "title": title,
+                        "authors": authors,
+                        "published": published,
+                        "summary": summary,
+                        "pdf_url": pdf_url,
+                        "arxiv_id": arxiv_id,
+                        "source": "arxiv",
+                    })
+                return results
+            except Exception as e:
+                logger.error(f"Error parsing ArXiv XML: {e}")
+                return []
 
 
 class ScholarlySearch(SearchTool):
@@ -167,7 +156,12 @@ class ScholarlySearch(SearchTool):
         logger.info(f"Searching Google Scholar for: {query}")
         return scholarly.search_pubs(query)
 
-    def _perform_search(self, query: str, limit: int = SCHOLAR_SEARCH_LIMIT) -> List[Dict]:
+    async def _perform_asearch(self, query: str, limit: int) -> List[Dict]:
+        """Async wrapper for synchronous scholarly search."""
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, self._perform_search_sync, query, limit)
+
+    def _perform_search_sync(self, query: str, limit: int = SCHOLAR_SEARCH_LIMIT) -> List[Dict]:
         search_query = self._search_with_rate_limit(query)
         results = []
         for _ in range(limit):
@@ -197,21 +191,41 @@ class SemanticScholarSearch(SearchTool):
         super().__init__()
         self.sch = SemanticScholar(api_key=SEMANTIC_SCHOLAR_API_KEY, timeout=10)
 
-    def _perform_search(self, query: str, limit: int = SEMANTIC_SCHOLAR_SEARCH_LIMIT) -> List[Dict]:
-        logger.info(f"Searching Semantic Scholar for: {query} (limit={limit})")
-        results = self.sch.search_paper(query, limit=limit, bulk=True)
-        output = []
-        for item in results:
-            output.append({
-                "title": item.title,
-                "authors": [a.name for a in item.authors],
-                "published": str(item.year) if item.year else "N/A",
-                "venue": item.venue if item.venue else "N/A",
-                "abstract": item.abstract if item.abstract else "N/A",
-                "link": item.url,
-                "source": "semantic_scholar",
-            })
-        return output
+    async def _perform_asearch(self, query: str, limit: int) -> List[Dict]:
+        """Async implementation of Semantic Scholar search using httpx."""
+        logger.info(f"Searching Semantic Scholar (Async) for: {query} (limit={limit})")
+        url = "https://api.semanticscholar.org/graph/v1/paper/search"
+        params = {
+            "query": query,
+            "limit": limit,
+            "fields": "title,authors,year,venue,abstract,url"
+        }
+        headers = {}
+        if SEMANTIC_SCHOLAR_API_KEY:
+            headers["x-api-key"] = SEMANTIC_SCHOLAR_API_KEY
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+                response = await client.get(url, params=params, headers=headers)
+                response.raise_for_status()
+                data = response.json()
+                
+                results = []
+                for item in data.get("data", []):
+                    authors = [a.get("name") for a in item.get("authors", [])]
+                    results.append({
+                        "title": item.get("title"),
+                        "authors": authors,
+                        "published": str(item.get("year")) if item.get("year") else "N/A",
+                        "venue": item.get("venue") or "N/A",
+                        "abstract": item.get("abstract") or "N/A",
+                        "link": item.get("url"),
+                        "source": "semantic_scholar",
+                    })
+                return results
+        except Exception as e:
+            logger.error(f"Error searching Semantic Scholar: {e}")
+            return []
 
 
 class OpenReviewSearch(SearchTool):
@@ -224,27 +238,52 @@ class OpenReviewSearch(SearchTool):
             logger.warning(f"Failed to initialize OpenReview client: {e}")
             self.client = None
 
-    def _perform_search(self, query: str, limit: int = OPENREVIEW_SEARCH_LIMIT) -> List[Dict]:
-        logger.info(f"Searching OpenReview for: {query}")
-        if not self.client:
+    async def _perform_asearch(self, query: str, limit: int) -> List[Dict]:
+        """Async implementation of OpenReview search using httpx."""
+        logger.info(f"Searching OpenReview (Async) for: {query}")
+        
+        # OpenReview API v2 search endpoint
+        # Based on typical usage: GET /notes/search?term={query}&limit={limit}&source=forum
+        url = "https://api2.openreview.net/notes/search"
+        params = {
+            "term": query,
+            "limit": limit,
+            "source": "forum"
+        }
+        
+        try:
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+                response = await client.get(url, params=params)
+                response.raise_for_status()
+                data = response.json()
+                
+                notes = data.get("notes", [])
+                output = []
+                for note in notes:
+                    content = note.get("content", {})
+                    title = content.get("title", {}).get("value", "N/A")
+                    authors = content.get("authors", {}).get("value", [])
+                    abstract = content.get("abstract", {}).get("value", "N/A")
+                    
+                    # Convert timestamp if available
+                    cdate = note.get("cdate")
+                    published = "N/A"
+                    if cdate:
+                        published = time.strftime('%Y-%m-%d', time.gmtime(cdate/1000))
+                    
+                    output.append({
+                        "title": title,
+                        "authors": authors,
+                        "published": published,
+                        "venue": "OpenReview",
+                        "abstract": abstract,
+                        "link": f"https://openreview.net/forum?id={note.get('id')}",
+                        "source": "openreview_v2"
+                    })
+                return output
+        except Exception as e:
+            logger.error(f"Error searching OpenReview: {e}")
             return []
-        notes = self.client.search_notes(term=query, limit=limit, source='forum')
-        output = []
-        for note in notes:
-            content = note.content
-            title = content.get("title", {}).get("value", "N/A")
-            authors = content.get("authors", {}).get("value", [])
-            abstract = content.get("abstract", {}).get("value", "N/A")
-            output.append({
-                "title": title,
-                "authors": authors,
-                "published": str(note.cdate) if note.cdate else "N/A",
-                "venue": "OpenReview",
-                "abstract": abstract,
-                "link": f"https://openreview.net/forum?id={note.id}",
-                "source": "openreview_v2"
-            })
-        return output
 
 
 class OpenAlexSearch(SearchTool):
@@ -267,7 +306,7 @@ class OpenAlexSearch(SearchTool):
         params = {"search": query, "per_page": limit}
         headers = {"User-Agent": "ValiRef/1.0 (mailto:your_email@example.com)"}
         
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
             response = await client.get(url, params=params, headers=headers)
             response.raise_for_status()
             return self._parse_openalex_response(response.json())

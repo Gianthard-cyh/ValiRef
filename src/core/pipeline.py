@@ -58,7 +58,6 @@ class ValidationPipeline:
             self._notify_callbacks('on_error', e)
             raise e
 
-        # 3. Final Summary
         summary = self._create_summary(
             path.name, 
             start_time, 
