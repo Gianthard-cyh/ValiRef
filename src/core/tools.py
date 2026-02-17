@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import List, Dict
 import arxiv
 from scholarly import scholarly
 from ratelimit import limits, sleep_and_retry

@@ -1,6 +1,4 @@
 import pytest
-import sys
-import os
 from src.bench.schema import Paper
 from src.core.detector import HallucinationDetector
 

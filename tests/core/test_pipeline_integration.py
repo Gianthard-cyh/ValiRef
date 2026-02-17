@@ -1,6 +1,4 @@
 import pytest
-import os
-import json
 from pathlib import Path
 from src.core.pipeline import ValidationPipeline
 
@@ -43,7 +41,7 @@ def test_pipeline_pdf_processing():
     fake_count = sum(1 for r in results["results"] if r["validation"].get("is_hallucination") is True)
     errors = sum(1 for r in results["results"] if r["validation"].get("is_hallucination") is None)
     
-    print(f"\nPipeline Test Summary:")
+    print("\nPipeline Test Summary:")
     print(f"Total References: {results['references_count']}")
     print(f"Real: {real_count}")
     print(f"Hallucinations: {fake_count}")

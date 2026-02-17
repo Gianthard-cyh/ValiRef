@@ -14,9 +14,6 @@ from .config import (
     LLM_MAX_TOKENS,
     LLM_TIMEOUT,
     LLM_MAX_RETRIES,
-    LANGCHAIN_TRACING_V2,
-    LANGCHAIN_API_KEY,
-    LANGCHAIN_PROJECT,
 )
 from .tools import ArxivSearch, OpenReviewSearch, OpenAlexSearch
 from .logger import logger
@@ -29,26 +26,13 @@ class ValidationResult(BaseModel):
     reasoning: str = Field(description="Explanation for the judgment")
     evidence: List[str] = Field(
         default_factory=list,
-        description="Links or titles found that support the judgment",
+        description="URLs found that support the judgment",
     )
-
-
-import os
 
 class HallucinationDetector:
     def __init__(self):
         if DEEPSEEK_API_KEY is None:
             raise ValueError("DEEPSEEK_API_KEY is not set")
-
-        # Configure LangSmith Tracing if enabled
-        if LANGCHAIN_TRACING_V2:
-            if not LANGCHAIN_API_KEY:
-                logger.warning("LANGCHAIN_TRACING_V2 is enabled but LANGCHAIN_API_KEY is missing.")
-            else:
-                os.environ["LANGCHAIN_TRACING_V2"] = "true"
-                os.environ["LANGCHAIN_API_KEY"] = LANGCHAIN_API_KEY
-                os.environ["LANGCHAIN_PROJECT"] = LANGCHAIN_PROJECT
-                logger.info(f"LangSmith tracing enabled for project: {LANGCHAIN_PROJECT}")
 
         self.llm = ChatDeepSeek(
             model=LLM_MODEL,

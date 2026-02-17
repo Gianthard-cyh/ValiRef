@@ -1,11 +1,10 @@
 import concurrent.futures
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any
 from pathlib import Path
 import time
-import json
 
 from .extract import PDFExtractor
-from .detector import HallucinationDetector, ValidationResult
+from .detector import HallucinationDetector
 from .logger import logger
 from ..bench.schema import Paper
 

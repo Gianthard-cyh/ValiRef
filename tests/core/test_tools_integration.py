@@ -1,6 +1,5 @@
 
 import pytest
-import os
 from src.core.tools import ArxivSearch, OpenReviewSearch, OpenAlexSearch
 
 @pytest.mark.integration
