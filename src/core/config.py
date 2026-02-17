@@ -18,9 +18,6 @@ LANGCHAIN_PROJECT = os.environ.get("LANGCHAIN_PROJECT", "ValiRef")
 if LANGCHAIN_TRACING_V2 and not LANGCHAIN_API_KEY:
     raise ValueError("LANGCHAIN_API_KEY is required when LANGCHAIN_TRACING_V2 is enabled")
 
-if LANGCHAIN_TRACING_V2:
-    logger.info("LangSmith tracing enabled")
-
 # LLM Configuration
 LLM_MODEL = "deepseek-chat"
 LLM_TEMPERATURE = 0.7

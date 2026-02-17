@@ -2597,6 +2597,7 @@ dependencies = [
     { name = "rich" },
     { name = "scholarly" },
     { name = "semanticscholar" },
+    { name = "typer" },
 ]
 
 [package.dev-dependencies]
@@ -2619,6 +2620,7 @@ requires-dist = [
     { name = "rich", specifier = ">=14.3.2" },
     { name = "scholarly", specifier = ">=1.7.11" },
     { name = "semanticscholar", specifier = ">=0.11.0" },
+    { name = "typer", specifier = ">=0.9.0" },
 ]
 
 [package.metadata.requires-dev]
