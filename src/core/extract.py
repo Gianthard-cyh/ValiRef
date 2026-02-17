@@ -27,14 +27,14 @@ class Extractor(ABC):
     """
 
     @abstractmethod
-    def extract(self, *args) -> List[Paper]:
+    async def extract(self, *args) -> List[Paper]:
         """
         Extract a list of referenced papers from the input
         """
         raise NotImplementedError
 
     @abstractmethod
-    def extract_batch(self, *args) -> List[List[Paper]]:
+    async def extract_batch(self, *args) -> List[List[Paper]]:
         """
         Extract lists of referenced papers from a batch of inputs
         """
@@ -55,7 +55,7 @@ class TextExtractor(Extractor):
             api_key=DEEPSEEK_API_KEY,
         )
 
-    def extract(self, text: str) -> List[Paper]:
+    async def extract(self, text: str) -> List[Paper]:
         """
         Extract a list of referenced papers from a text string
         """
@@ -101,7 +101,7 @@ class TextExtractor(Extractor):
         structured_llm = self.model.with_structured_output(ReferenceList)
         chain = prompt | structured_llm
 
-        result = chain.invoke({"text": truncated_text})
+        result = await chain.ainvoke({"text": truncated_text})
 
         if result is None:
             logger.warning(
@@ -129,14 +129,14 @@ class TextExtractor(Extractor):
 
         return papers
 
-    def extract_batch(self, texts: List[str]) -> List[List[Paper]]:
+    async def extract_batch(self, texts: List[str]) -> List[List[Paper]]:
         """
         Extract lists of referenced papers from a batch of text strings
         """
         batch_results = []
         for text in texts:
             try:
-                batch_results.append(self.extract(text))
+                batch_results.append(await self.extract(text))
             except Exception as e:
                 print(f"Error extracting from text: {e}")
                 batch_results.append([])
@@ -147,7 +147,7 @@ class PDFExtractor(Extractor):
     def __init__(self):
         self.text_extractor = TextExtractor()
 
-    def extract(self, file_path: str) -> List[Paper]:
+    async def extract(self, file_path: str) -> List[Paper]:
         """
         Extract a list of referenced papers from a PDF file path
         """
@@ -156,16 +156,16 @@ class PDFExtractor(Extractor):
         for page in doc:
             text += page.get_text()
 
-        return self.text_extractor.extract(text)
+        return await self.text_extractor.extract(text)
 
-    def extract_batch(self, file_paths: List[str]) -> List[List[Paper]]:
+    async def extract_batch(self, file_paths: List[str]) -> List[List[Paper]]:
         """
         Extract lists of referenced papers from a batch of PDF file paths
         """
         batch_results = []
         for file_path in file_paths:
             try:
-                batch_results.append(self.extract(file_path))
+                batch_results.append(await self.extract(file_path))
             except Exception as e:
                 print(f"Error extracting from PDF {file_path}: {e}")
                 batch_results.append([])

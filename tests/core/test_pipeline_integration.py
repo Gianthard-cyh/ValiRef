@@ -1,6 +1,7 @@
 import pytest
 from pathlib import Path
 from src.core.pipeline import ValidationPipeline
+import asyncio
 
 @pytest.mark.integration
 def test_pipeline_pdf_processing():
@@ -15,7 +16,7 @@ def test_pipeline_pdf_processing():
     
     # Run pipeline with a small number of workers to avoid overwhelming the test environment
     # The original script used 50, let's use 50 as requested
-    results = pipeline.process_pdf(str(pdf_path), max_workers=50)
+    results = asyncio.run(pipeline.process_pdf(str(pdf_path), max_workers=50))
     
     assert results is not None
     assert "references_count" in results

@@ -1,4 +1,4 @@
-import concurrent.futures
+import asyncio
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 import time
@@ -19,125 +19,142 @@ class ValidationPipeline:
         self.detector = HallucinationDetector()
         self.callbacks = callbacks or []
 
-    def process_pdf(self, pdf_path: str, max_workers: int = 5) -> Dict[str, Any]:
+    async def process_pdf(self, pdf_path: str, max_workers: int = 5) -> Dict[str, Any]:
         """
         Process a PDF file: extract references and validate them concurrently.
-        
-        Args:
-            pdf_path: Path to the PDF file.
-            max_workers: Number of concurrent validation threads.
-            
-        Returns:
-            Dictionary containing processing metadata and list of validation results.
         """
         start_time = time.time()
         path = Path(pdf_path)
-        if not path.exists():
-            error = FileNotFoundError(f"PDF file not found: {pdf_path}")
-            for callback in self.callbacks:
-                callback.on_error(error)
-            raise error
+        
+        self._check_file_exists(path)
 
         logger.info(f"Starting extraction for: {path.name}")
-        for callback in self.callbacks:
-            callback.on_pipeline_start(path.name)
-            callback.on_extraction_start(path.name)
+        self._notify_callbacks('on_pipeline_start', path.name)
+        self._notify_callbacks('on_extraction_start', path.name)
 
         try:
-            references = self.extractor.extract(str(path))
+            references = await self.extractor.extract(str(path))
+            
             logger.info(f"Extracted {len(references)} references.")
-            for callback in self.callbacks:
-                callback.on_extraction_end(references)
+            self._notify_callbacks('on_extraction_end', references)
+
         except Exception as e:
             logger.error(f"Extraction failed: {e}")
-            for callback in self.callbacks:
-                callback.on_error(e)
-            return {
-                "file": path.name,
-                "status": "failed",
-                "error": str(e),
-                "references_count": 0,
-                "results": []
-            }
+            self._notify_callbacks('on_error', e)
+            return self._create_summary(path.name, start_time, error=str(e), status="failed")
 
         if not references:
             logger.warning("No references found.")
-            return {
-                "file": path.name,
-                "status": "completed",
-                "references_count": 0,
-                "results": []
-            }
+            return self._create_summary(path.name, start_time)
 
         logger.info(f"Starting validation for {len(references)} references with {max_workers} workers...")
-        for callback in self.callbacks:
-            callback.on_validation_start(len(references))
+        self._notify_callbacks('on_validation_start', len(references))
 
         results = []
-        
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_paper = {
-                executor.submit(self._validate_single_reference, paper, i, len(references)): paper 
-                for i, paper in enumerate(references)
-            }
-            
-            for future in concurrent.futures.as_completed(future_to_paper):
-                paper = future_to_paper[future]
-                try:
-                    result = future.result()
-                    if result:
-                        results.append(result)
-                        for callback in self.callbacks:
-                            callback.on_reference_validation_end(paper, result)
-                except Exception as e:
-                    logger.error(f"Validation failed for reference '{paper.title}': {e}")
-                    for callback in self.callbacks:
-                        callback.on_reference_validation_error(paper, e)
-                    # Add a failed result entry
-                    results.append({
-                        "paper": paper.model_dump(),
-                        "validation": {
-                            "is_hallucination": None,
-                            "confidence": 0.0,
-                            "reasoning": f"Validation process error: {str(e)}",
-                            "evidence": []
-                        },
-                        "status": "error"
-                    })
+        try:
+            results = await self._run_validation(references, max_workers)
+        except Exception as e:
+            logger.error(f"Pipeline failed: {e}")
+            self._notify_callbacks('on_error', e)
+            raise e
 
-        end_time = time.time()
-        duration = end_time - start_time
+        # 3. Final Summary
+        summary = self._create_summary(
+            path.name, 
+            start_time, 
+            references_count=len(references), 
+            results=results
+        )
         
-        summary = {
-            "file": path.name,
-            "status": "completed",
-            "duration_seconds": duration,
-            "references_count": len(references),
-            "validated_count": len(results),
-            "results": results
-        }
+        logger.info(f"Pipeline {summary['status']} in {summary['duration_seconds']:.2f} seconds.")
+        self._notify_callbacks('on_pipeline_end', summary)
         
-        logger.info(f"Pipeline completed in {duration:.2f} seconds.")
-        for callback in self.callbacks:
-            callback.on_pipeline_end(summary)
-            
         return summary
 
-    def _validate_single_reference(self, paper: Paper, index: int, total: int) -> Dict[str, Any]:
+    def _check_file_exists(self, path: Path):
+        if not path.exists():
+            error = FileNotFoundError(f"PDF file not found: {path}")
+            self._notify_callbacks('on_error', error)
+            raise error
+
+    async def _run_validation(self, references: List[Paper], max_workers: int) -> List[Dict[str, Any]]:
+        results = []
+        semaphore = asyncio.Semaphore(max_workers)
+        
+        async def sem_task(index, paper):
+            async with semaphore:
+                res = await self._validate_single_reference(paper, index, len(references))
+                return index, res
+
+        tasks = [sem_task(i, paper) for i, paper in enumerate(references)]
+        
+        for future in asyncio.as_completed(tasks):
+            try:
+                index, result = await future
+                if result:
+                    results.append(result)
+                    self._notify_callbacks('on_reference_validation_end', references[index], result)
+            except Exception as e:
+                logger.error(f"Task error: {e}")
+                
+        return results
+
+    async def _validate_single_reference(self, paper: Paper, index: int, total: int) -> Optional[Dict[str, Any]]:
         """
-        Validate a single reference using the detector.
+        Validate a single reference using the detector asynchronously.
         """
         logger.info(f"Validating [{index+1}/{total}]: {paper.title[:50]}...")
-        for callback in self.callbacks:
-            callback.on_reference_validation_start(paper, index, total)
+        self._notify_callbacks('on_reference_validation_start', paper, index, total)
             
         try:
-            validation_result = self.detector.check_reference(paper)
-            return {
+            # Use the async check method
+            validation_result = await self.detector.check_reference(paper)
+            
+            result = {
                 "paper": paper.model_dump(),
                 "validation": validation_result.model_dump(),
                 "status": "success"
             }
+            return result
+            
         except Exception as e:
             logger.error(f"Error checking reference '{paper.title}': {e}")
-            raise e
+            self._notify_callbacks('on_reference_validation_error', paper, e)
+            return {
+                "paper": paper.model_dump(),
+                "validation": {
+                    "is_hallucination": None,
+                    "confidence": 0.0,
+                    "reasoning": f"Validation process error: {str(e)}",
+                    "evidence": []
+                },
+                "status": "error"
+            }
+
+    def _create_summary(
+        self, 
+        filename: str, 
+        start_time: float, 
+        references_count: int = 0, 
+        results: List = None,
+        error: str = None,
+        status: str = "completed"
+    ) -> Dict[str, Any]:
+        end_time = time.time()
+        summary = {
+            "file": filename,
+            "status": status,
+            "duration_seconds": end_time - start_time,
+            "references_count": references_count,
+            "validated_count": len(results) if results else 0,
+            "results": results or []
+        }
+        if error:
+            summary["error"] = error
+        return summary
+
+    def _notify_callbacks(self, method_name: str, *args, **kwargs):
+        """Helper to notify all callbacks safely."""
+        for callback in self.callbacks:
+            if hasattr(callback, method_name):
+                getattr(callback, method_name)(*args, **kwargs)

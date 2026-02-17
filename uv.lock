@@ -2588,6 +2588,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "arxiv" },
     { name = "google-search-results" },
+    { name = "httpx" },
     { name = "langchain" },
     { name = "langgraph" },
     { name = "openreview-py" },
@@ -2611,6 +2612,7 @@ dev = [
 requires-dist = [
     { name = "arxiv", specifier = ">=2.4.0" },
     { name = "google-search-results", specifier = ">=2.4.2" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "langchain", specifier = ">=1.2.10" },
     { name = "langgraph", specifier = ">=1.0.8" },
     { name = "openreview-py", specifier = ">=1.57.0" },

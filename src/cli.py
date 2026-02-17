@@ -6,6 +6,7 @@ from rich.table import Table
 from src.core.pipeline import ValidationPipeline
 from src.cli_callbacks import RichConsoleCallback
 import logging
+import asyncio
 
 # Configure logging to suppress debug output by default
 # logging.basicConfig(level=logging.INFO) # Removed to avoid conflict with internal logger configuration
@@ -44,16 +45,17 @@ def validate(
         console.print(f"[bold red]Error:[/bold red] File not found: {pdf_path}")
         raise typer.Exit(code=1)
 
-    try:
+    async def run_pipeline():
+        pipeline = ValidationPipeline(
+            callbacks=[RichConsoleCallback(console)] if not verbose else []
+        )
         if verbose:
-            pipeline = ValidationPipeline()
             console.print(f"[bold green]Starting validation for:[/bold green] {path.name}")
-            results = pipeline.process_pdf(str(path), max_workers=max_workers)
-        else:
-            # Use RichConsoleCallback for nice progress updates
-            callback = RichConsoleCallback(console)
-            pipeline = ValidationPipeline(callbacks=[callback])
-            results = pipeline.process_pdf(str(path), max_workers=max_workers)
+        
+        return await pipeline.process_pdf(str(path), max_workers=max_workers)
+
+    try:
+        results = asyncio.run(run_pipeline())
         
         if output_json:
             import json
