@@ -1,10 +1,9 @@
 import typer
-from typing import Optional
 from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 from src.core.pipeline import ValidationPipeline
-from src.cli_callbacks import RichConsoleCallback
+from src.cli_callbacks import CliCallback
 import logging
 import asyncio
 
@@ -47,7 +46,7 @@ def validate(
 
     async def run_pipeline():
         pipeline = ValidationPipeline(
-            callbacks=[RichConsoleCallback(console)] if not verbose else []
+            callbacks=[CliCallback(console)] if not verbose else []
         )
         if verbose:
             console.print(f"[bold green]Starting validation for:[/bold green] {path.name}")

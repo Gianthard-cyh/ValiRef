@@ -1,5 +1,5 @@
-from typing import List, Dict, Any, Optional
-from abc import ABC, abstractmethod
+from typing import List, Dict, Any
+from abc import ABC
 from ..bench.schema import Paper
 
 class ValidationCallback(ABC):

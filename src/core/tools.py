@@ -1,9 +1,8 @@
 import time
-from functools import wraps
 import random
 import threading
 import asyncio
-from typing import List, Dict, Callable, Any, Optional
+from typing import List, Dict, Callable
 import arxiv
 from scholarly import scholarly
 from ratelimit import limits, sleep_and_retry
@@ -257,7 +256,7 @@ class OpenAlexSearch(SearchTool):
         url = "https://api.openalex.org/works"
         params = {"search": query, "per_page": limit}
         headers = {"User-Agent": "ValiRef/1.0 (mailto:your_email@example.com)"}
-        response = requests.get(url, params=params, headers=headers, timeout=10)
+        response = httpx.get(url, params=params, headers=headers, timeout=10)
         response.raise_for_status()
         return self._parse_openalex_response(response.json())
 

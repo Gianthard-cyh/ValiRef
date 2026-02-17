@@ -4,7 +4,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskID
 from src.core.callbacks import ValidationCallback
 from src.bench.schema import Paper
 
-class RichConsoleCallback(ValidationCallback):
+class CliCallback(ValidationCallback):
     def __init__(self, console: Console):
         self.console = console
         self.progress = Progress(
