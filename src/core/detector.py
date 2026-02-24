@@ -15,7 +15,7 @@ from .config import (
     LLM_TIMEOUT,
     LLM_MAX_RETRIES,
 )
-from .tools import ArxivSearch, OpenReviewSearch, OpenAlexSearch
+from .tools import AggregateSearch
 from .logger import logger
 
 class ValidationResult(BaseModel):
@@ -43,12 +43,8 @@ class HallucinationDetector:
             api_key=DEEPSEEK_API_KEY,
         )
 
-        # Initialize Search Tools
-        self.arxiv_search_instance = ArxivSearch()
-        # self.scholar_search_instance = ScholarlySearch() # Disabled due to rate limiting
-        # self.semanticscholar_search_instance = SemanticScholarSearch() # Disabled due to rate limiting
-        self.openreview_search_instance = OpenReviewSearch()
-        self.openalex_search_instance = OpenAlexSearch()
+        # Initialize Aggregate Search Tool
+        self.aggregate_search_instance = AggregateSearch()
 
         self.tools = self._get_tools()
         self.agent_executor = create_agent(self.llm, self.tools)
@@ -57,31 +53,14 @@ class HallucinationDetector:
         """Initialize and return the list of tools available to the agent."""
         return [
             StructuredTool.from_function(
-                coroutine=self.arxiv_search_instance.asearch,
-                name="arxiv_search",
-                description="Search ArXiv for papers matching the query. Useful for finding physics, computer science, and math papers. Returns a list of dictionaries with paper details.",
-            ),
-            # StructuredTool.from_function(
-            #     func=None,
-            #     coroutine=self.scholar_search_instance.asearch,
-            #     name="scholar_search",
-            #     description="Search Google Scholar for papers matching the query. Useful for finding papers from a wide range of academic disciplines. NOTE: This tool is rate-limited to 1 request every 20 seconds. Returns a list of dictionaries with paper details.",
-            # ),
-            # StructuredTool.from_function(
-            #     func=None,
-            #     coroutine=self.semanticscholar_search_instance.asearch,
-            #     name="semanticscholar_search",
-            #     description="Search Semantic Scholar for papers matching the query. Good for CS/AI papers. Returns a list of dictionaries with paper details.",
-            # ),
-            StructuredTool.from_function(
-                coroutine=self.openreview_search_instance.asearch,
-                name="openreview_search",
-                description="Search OpenReview for papers matching the query. Useful for finding papers in venues like NeurIPS, ICLR, ICML. Returns a list of dictionaries with paper details.",
-            ),
-            StructuredTool.from_function(
-                coroutine=self.openalex_search_instance.asearch,
-                name="openalex_search",
-                description="Search OpenAlex for papers matching the query. A very large open database of scientific papers. Returns a list of dictionaries with paper details.",
+                func=None,
+                coroutine=self.aggregate_search_instance.asearch,
+                name="aggregate_search",
+                description=(
+                    "Search multiple sources concurrently for papers matching the query. "
+                    "Sources can be a list of: 'arxiv', 'openreview', 'openalex', 'duckduckgo'. "
+                    "Returns a combined list of paper details."
+                ),
             ),
             StructuredTool.from_function(
                 func=self._create_validation_result,
@@ -112,10 +91,10 @@ class HallucinationDetector:
     def _get_system_prompt(self) -> str:
         return (
             "You are a scientific fact-checker. Your task is to verify if a given reference is a REAL publication.\n"
-            "You have access to multiple search tools: 'arxiv_search', 'openreview_search', and 'openalex_search'.\n"
+            "You have access to an `aggregate_search` tool that can query multiple sources at once.\n"
             "Steps:\n"
-            "1. Search for the paper using its title. Start with 'arxiv_search' or 'openalex_search' as they are fast.\n"
-            "2. If not found, try 'openreview_search' (for recent AI conferences).\n"
+            "1. Search for the paper using its title. Use `aggregate_search` with sources like ['arxiv', 'openalex'].\n"
+            "2. If not found, try adding 'openreview' or 'duckduckgo' to the sources list.\n"
             "3. Verify if the Title, Authors, and Date match the query.\n"
             "4. Be careful about Attribution Errors (real title but wrong authors).\n"
             "5. Gather enough evidence to make a definitive judgment.\n"

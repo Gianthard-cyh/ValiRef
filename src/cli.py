@@ -59,6 +59,9 @@ def validate(
         else:
             _print_results(results)
             
+    except KeyboardInterrupt:
+        console.print("\n[bold yellow]Operation interrupted by user[/bold yellow]")
+        raise typer.Exit(code=1)
     except Exception as e:
         console.print(f"[bold red]An error occurred:[/bold red] {str(e)}")
         raise typer.Exit(code=1)
