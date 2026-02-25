@@ -6,11 +6,11 @@ from typing import List, Dict, Callable
 import xml.etree.ElementTree as ET
 from pydantic import BaseModel, Field
 from scholarly import scholarly
-from ratelimit import limits, sleep_and_retry
 from .config import (
     SCHOLAR_RATE_LIMIT_CALLS,
     SCHOLAR_RATE_LIMIT_PERIOD,
     ARXIV_RATE_LIMIT_DELAY,
+    SEMANTIC_SCHOLAR_RATE_LIMIT_DELAY,
     SCHOLAR_SEARCH_LIMIT,
     SEMANTIC_SCHOLAR_API_KEY,
     OPENALEX_SEARCH_LIMIT,
@@ -46,6 +46,9 @@ class SearchTool:
     # Global state for rate limiting, shared across all instances of the same tool class
     _rate_limit_states = {}
     _state_lock = threading.Lock()
+    
+    # Subclasses should override this to set a specific rate limit delay
+    rate_limit_delay = 0.0
 
     def __init__(self):
         # Initialize state for this class if not exists
@@ -71,16 +74,57 @@ class SearchTool:
         """
         raise NotImplementedError
 
+    async def _wait_for_rate_limit(self):
+        """
+        Enforce a minimum delay between requests for this tool class using a leaky bucket algorithm.
+        Ensures that requests are spaced out by at least `self.rate_limit_delay` seconds.
+        """
+        if self.rate_limit_delay <= 0:
+            return
+
+        state = self._state
+        
+        # Calculate how long to sleep OUTSIDE the lock
+        # We only need the lock to update the shared state
+        delay_needed = 0.0
+        
+        with state["lock"]:
+            if "last_request_time" not in state:
+                state["last_request_time"] = 0.0
+
+            now = time.time()
+            last_request_time = state["last_request_time"]
+            
+            # The next available slot is the later of:
+            # 1. The current time (if we've been idle long enough)
+            # 2. The previous request time + required delay
+            next_slot = max(now, last_request_time + self.rate_limit_delay)
+            
+            delay_needed = next_slot - now
+            
+            # Update state to reserve this slot
+            # IMPORTANT: We set last_request_time to next_slot, effectively "booking" it
+            state["last_request_time"] = next_slot
+
+        if delay_needed > 0:
+            logger.info(
+                f"[{self.__class__.__name__}] Rate limit active. Sleeping for {delay_needed:.2f}s..."
+            )
+            await asyncio.sleep(delay_needed)
+
     async def _asearch_with_retry(
         self, func: Callable, *args, **kwargs
     ) -> List[SearchResult]:
         """
-        Executes the search function with exponential backoff (async version).
+        Executes the search function with exponential backoff and rate limiting (async version).
         """
         retries = 3
         base_backoff = 2.0
 
         for i in range(retries + 1):
+            # 1. Check Rate Limit before making a request
+            await self._wait_for_rate_limit()
+
             state = self._state
             # Check shared state (still using thread lock as it might be shared with sync threads)
             with state["lock"]:
@@ -100,6 +144,41 @@ class SearchTool:
                     f"[{self.__class__.__name__}] Task cancelled. Exiting retry loop."
                 )
                 raise
+            except httpx.HTTPStatusError as e:
+                # Handle 429 Too Many Requests specifically
+                if e.response.status_code == 429:
+                    retry_after = e.response.headers.get("Retry-After")
+                    if retry_after:
+                        try:
+                            backoff_duration = float(retry_after) + 1.0
+                        except ValueError:
+                            backoff_duration = (base_backoff * (2**i)) + random.uniform(1, 3)
+                    else:
+                        backoff_duration = (base_backoff * (2**i)) + random.uniform(5, 10) # Aggressive backoff for 429
+                    
+                    logger.warning(
+                        f"[{self.__class__.__name__}] 429 Too Many Requests. Retrying in {backoff_duration:.2f}s..."
+                    )
+                else:
+                    backoff_duration = (base_backoff * (2**i)) + random.uniform(0, 1)
+                    logger.warning(
+                         f"[{self.__class__.__name__}] HTTP Error {e.response.status_code}: {str(e)}. Retrying in {backoff_duration:.2f}s..."
+                    )
+                
+                if i == retries:
+                     logger.error(
+                        f"[{self.__class__.__name__}] Failed after {retries} retries: {str(e)}"
+                    )
+                     return []
+
+                with state["lock"]:
+                    new_backoff_until = time.time() + backoff_duration
+                    if new_backoff_until > state["backoff_until"]:
+                        state["backoff_until"] = new_backoff_until
+                
+                await asyncio.sleep(backoff_duration)
+                continue
+
             except Exception as e:
                 if i == retries:
                     logger.error(
@@ -124,6 +203,8 @@ class SearchTool:
 class ArxivSearch(SearchTool):
     """Tool to search ArXiv for papers."""
     
+    rate_limit_delay = ARXIV_RATE_LIMIT_DELAY
+
     def __init__(self):
         super().__init__()
         # Ensure rate limit state has last_request_time
@@ -133,33 +214,6 @@ class ArxivSearch(SearchTool):
 
     async def _perform_asearch(self, query: str, limit: int) -> List[SearchResult]:
         """Async implementation of ArXiv search using httpx and XML parsing."""
-        
-        # Rate limiting logic
-        state = self._state
-        delay_needed = 0.0
-        
-        with state['lock']:
-            now = time.time()
-            # If last_request_time is in the future, we must wait until then
-            # We want to ensure 4s gap between START of requests
-            
-            last_request_time = state.get('last_request_time', 0.0)
-            
-            # If the last request was too recent (or scheduled in future), we wait
-            if now < last_request_time + ARXIV_RATE_LIMIT_DELAY:
-                # We need to wait until (last + delay)
-                target_time = last_request_time + ARXIV_RATE_LIMIT_DELAY
-                delay_needed = target_time - now
-                
-                # We claim the slot at target_time
-                state['last_request_time'] = target_time
-            else:
-                # We can start immediately, so we claim "now"
-                state['last_request_time'] = now
-                
-        if delay_needed > 0:
-            logger.info(f"ArXiv rate limit active. Sleeping for {delay_needed:.2f}s...")
-            await asyncio.sleep(delay_needed)
             
         logger.info(f"Searching ArXiv (Async) for: {query}")
         url = "https://export.arxiv.org/api/query"
@@ -224,8 +278,8 @@ class ArxivSearch(SearchTool):
 class ScholarlySearch(SearchTool):
     """Tool to search Google Scholar using `scholarly` library (free)."""
 
-    @sleep_and_retry
-    @limits(calls=SCHOLAR_RATE_LIMIT_CALLS, period=SCHOLAR_RATE_LIMIT_PERIOD)
+    rate_limit_delay = SCHOLAR_RATE_LIMIT_PERIOD
+
     def _search_with_rate_limit(self, query: str):
         logger.info(f"Searching Google Scholar for: {query}")
         return scholarly.search_pubs(query)
@@ -266,12 +320,15 @@ class ScholarlySearch(SearchTool):
 class SemanticScholarSearch(SearchTool):
     """Tool to search Semantic Scholar."""
 
+    rate_limit_delay = SEMANTIC_SCHOLAR_RATE_LIMIT_DELAY
+
     def __init__(self):
         super().__init__()
         self.sch = SemanticScholar(api_key=SEMANTIC_SCHOLAR_API_KEY, timeout=10)
 
     async def _perform_asearch(self, query: str, limit: int) -> List[SearchResult]:
         """Async implementation of Semantic Scholar search using httpx."""
+        
         logger.info(f"Searching Semantic Scholar (Async) for: {query} (limit={limit})")
         url = "https://api.semanticscholar.org/graph/v1/paper/search"
         params = {
@@ -283,32 +340,28 @@ class SemanticScholarSearch(SearchTool):
         if SEMANTIC_SCHOLAR_API_KEY:
             headers["x-api-key"] = SEMANTIC_SCHOLAR_API_KEY
 
-        try:
-            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-                response = await client.get(url, params=params, headers=headers)
-                response.raise_for_status()
-                data = response.json()
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            response = await client.get(url, params=params, headers=headers)
+            response.raise_for_status()
+            data = response.json()
 
-                results = []
-                for item in data.get("data", []):
-                    authors = [a.get("name") for a in item.get("authors", [])]
-                    results.append(
-                        SearchResult(
-                            title=item.get("title", ""),
-                            authors=authors,
-                            published_date=(
-                                str(item.get("year")) if item.get("year") else "N/A"
-                            ),
-                            venue=item.get("venue") or "N/A",
-                            abstract=item.get("abstract") or "N/A",
-                            url=item.get("url") or "N/A",
-                            source="semantic_scholar",
-                        )
+            results = []
+            for item in data.get("data", []):
+                authors = [a.get("name") for a in item.get("authors", [])]
+                results.append(
+                    SearchResult(
+                        title=item.get("title", ""),
+                        authors=authors,
+                        published_date=(
+                            str(item.get("year")) if item.get("year") else "N/A"
+                        ),
+                        venue=item.get("venue") or "N/A",
+                        abstract=item.get("abstract") or "N/A",
+                        url=item.get("url") or "N/A",
+                        source="semantic_scholar",
                     )
-                return results
-        except Exception as e:
-            logger.error(f"Error searching Semantic Scholar: {e}")
-            return []
+                )
+            return results
 
 
 class OpenReviewSearch(SearchTool):
@@ -333,41 +386,37 @@ class OpenReviewSearch(SearchTool):
         url = "https://api2.openreview.net/notes/search"
         params = {"term": query, "limit": limit, "source": "forum"}
 
-        try:
-            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-                response = await client.get(url, params=params)
-                response.raise_for_status()
-                data = response.json()
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            data = response.json()
 
-                notes = data.get("notes", [])
-                output = []
-                for note in notes:
-                    content = note.get("content", {})
-                    title = content.get("title", {}).get("value", "N/A")
-                    authors = content.get("authors", {}).get("value", [])
-                    abstract = content.get("abstract", {}).get("value", "N/A")
+            notes = data.get("notes", [])
+            output = []
+            for note in notes:
+                content = note.get("content", {})
+                title = content.get("title", {}).get("value", "N/A")
+                authors = content.get("authors", {}).get("value", [])
+                abstract = content.get("abstract", {}).get("value", "N/A")
 
-                    # Convert timestamp if available
-                    cdate = note.get("cdate")
-                    published = "N/A"
-                    if cdate:
-                        published = time.strftime("%Y-%m-%d", time.gmtime(cdate / 1000))
+                # Convert timestamp if available
+                cdate = note.get("cdate")
+                published = "N/A"
+                if cdate:
+                    published = time.strftime("%Y-%m-%d", time.gmtime(cdate / 1000))
 
-                    output.append(
-                        SearchResult(
-                            title=title,
-                            authors=authors,
-                            published_date=published,
-                            venue="OpenReview",
-                            abstract=abstract,
-                            url=f"https://openreview.net/forum?id={note.get('id')}",
-                            source="openreview_v2",
-                        )
+                output.append(
+                    SearchResult(
+                        title=title,
+                        authors=authors,
+                        published_date=published,
+                        venue="OpenReview",
+                        abstract=abstract,
+                        url=f"https://openreview.net/forum?id={note.get('id')}",
+                        source="openreview_v2",
                     )
-                return output
-        except Exception as e:
-            logger.error(f"Error searching OpenReview: {e}")
-            return []
+                )
+            return output
 
 
 class OpenAlexSearch(SearchTool):
@@ -438,26 +487,22 @@ class DuckDuckGoSearch(SearchTool):
         self, query: str, limit: int = DUCKDUCKGO_SEARCH_LIMIT
     ) -> List[SearchResult]:
         logger.info(f"Searching DuckDuckGo for: {query}")
-        try:
-            results = []
-            with DDGS() as ddgs:
-                ddgs_gen = ddgs.text(query, max_results=limit)
-                for r in ddgs_gen:
-                    results.append(
-                        SearchResult(
-                            title=r.get("title", "N/A"),
-                            authors=[],  # DDG search results don't usually have authors
-                            published_date="N/A",
-                            venue="Web",
-                            abstract=r.get("body", "N/A"),
-                            url=r.get("href", "N/A"),
-                            source="duckduckgo",
-                        )
+        results = []
+        with DDGS() as ddgs:
+            ddgs_gen = ddgs.text(query, max_results=limit)
+            for r in ddgs_gen:
+                results.append(
+                    SearchResult(
+                        title=r.get("title", "N/A"),
+                        authors=[],  # DDG search results don't usually have authors
+                        published_date="N/A",
+                        venue="Web",
+                        abstract=r.get("body", "N/A"),
+                        url=r.get("href", "N/A"),
+                        source="duckduckgo",
                     )
-            return results
-        except Exception as e:
-            logger.error(f"Error searching DuckDuckGo: {e}")
-            return []
+                )
+        return results
 
 
 class AggregateSearch:

@@ -2,6 +2,9 @@ import typer
 from pathlib import Path
 from rich.console import Console
 from rich.table import Table
+from rich.panel import Panel
+from rich.text import Text
+from rich import box
 from src.core.pipeline import ValidationPipeline
 from src.cli_callbacks import CliCallback
 import logging
@@ -75,28 +78,79 @@ def _print_results(results: dict):
     console.print(f"Validated: {results.get('validated_count', 0)}")
     console.print(f"Duration: {results.get('duration_seconds', 0):.2f}s")
     
-    table = Table(title="Validation Details")
-    table.add_column("Reference", style="cyan", no_wrap=True)
-    table.add_column("Status", style="magenta")
-    table.add_column("Is Hallucination", style="red")
-    table.add_column("Confidence", style="green")
-    
-    for item in results.get("results", []):
+    console.print("\n[bold]Detailed Report[/bold]")
+
+    for i, item in enumerate(results.get("results", []), 1):
         paper = item.get("paper", {})
         title = paper.get("title", "Unknown Title")
-        # Truncate long titles
-        if len(title) > 50:
-            title = title[:47] + "..."
-            
+        authors_list = paper.get("authors", [])
+        if isinstance(authors_list, list):
+            authors = ", ".join(authors_list)
+        else:
+            authors = str(authors_list)
+        
         validation = item.get("validation", {})
-        status = item.get("status", "unknown")
+        # Handle cases where validation might be None or empty
+        if not validation:
+             is_hallucination = None
+             confidence = 0.0
+             reasoning = "Validation failed or not performed."
+             evidence = []
+        else:
+            is_hallucination = validation.get("is_hallucination")
+            confidence = validation.get("confidence", 0.0)
+            reasoning = validation.get("reasoning", "No reasoning provided.")
+            evidence = validation.get("evidence", [])
         
-        is_hallucination = str(validation.get("is_hallucination", "N/A"))
-        confidence = f"{validation.get('confidence', 0.0):.2f}"
+        # Color coding and Status
+        if is_hallucination is True:
+            border_style = "red"
+            status_text = "[bold red]HALLUCINATION[/bold red]"
+            icon = "❌"
+        elif is_hallucination is False:
+            border_style = "green"
+            status_text = "[bold green]REAL REFERENCE[/bold green]"
+            icon = "✅"
+        else:
+            border_style = "yellow"
+            status_text = "[bold yellow]UNKNOWN / ERROR[/bold yellow]"
+            icon = "⚠️"
+            
+        content = Text()
+        content.append(f"Title: {title}\n", style="bold")
+        if authors:
+            content.append(f"Authors: {authors}\n", style="italic")
+        content.append(f"Confidence: {confidence:.2f}\n")
         
-        table.add_row(title, status, is_hallucination, confidence)
+        content.append("\nReasoning:\n", style="bold underline")
+        content.append(f"{reasoning}\n")
         
-    console.print(table)
+        if evidence:
+            content.append("\nEvidence / Sources:\n", style="bold underline")
+            for item in evidence:
+                item_str = str(item)
+                if item_str.startswith("http"):
+                    content.append(f"- {item_str}\n", style="blue link " + item_str)
+                else:
+                    content.append(f"- {item_str}\n")
+        else:
+            if is_hallucination is False:
+                 content.append("\nEvidence / Sources:\n", style="bold underline")
+                 content.append("No direct link found, but verified as real.\n", style="dim")
+            elif is_hallucination is True:
+                 content.append("\nEvidence / Sources:\n", style="bold underline")
+                 content.append("No supporting evidence found (expected for hallucinations).\n", style="dim")
+
+
+        panel = Panel(
+            content,
+            title=f"{icon} Reference #{i} - {status_text}",
+            border_style=border_style,
+            expand=False,
+            box=box.ROUNDED
+        )
+        console.print(panel)
+        console.print("") # Add spacing
 
 @app.command()
 def version():

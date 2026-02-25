@@ -102,7 +102,7 @@ class HallucinationDetector:
             "   - is_hallucination: True if it's fake or attribution error, False if real.\n"
             "   - confidence: 0.0 to 1.0\n"
             "   - reasoning: Detailed explanation.\n"
-            "   - evidence: List of found links or titles."
+            "   - evidence: List of URLs that support your judgment. If URL is not available, provide the source name."
         )
 
     def _parse_agent_response(self, response: dict) -> ValidationResult:

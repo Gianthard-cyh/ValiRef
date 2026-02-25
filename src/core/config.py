@@ -32,8 +32,9 @@ EXTRACTION_CHAR_LIMIT = 20000
 
 # Rate Limiting Configuration
 SCHOLAR_RATE_LIMIT_CALLS = 1
-SCHOLAR_RATE_LIMIT_PERIOD = 0.5
-ARXIV_RATE_LIMIT_DELAY = 4.0
+SCHOLAR_RATE_LIMIT_PERIOD = 10.0  # Increased to avoid rate limits (was 0.5)
+ARXIV_RATE_LIMIT_DELAY = 5.0      # Increased to be safe (was 4.0)
+SEMANTIC_SCHOLAR_RATE_LIMIT_DELAY = 3.0 # New setting for Semantic Scholar
 
 # Search Configuration
 ARXIV_SEARCH_LIMIT = 5
