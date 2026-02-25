@@ -1,11 +1,14 @@
 import typer
 from pathlib import Path
+from typing import Optional
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich.text import Text
 from rich import box
 from src.core.pipeline import ValidationPipeline
+from src.core.detector import HallucinationDetector
+from src.bench import BenchmarkRunner
 from src.cli_callbacks import CliCallback
 import logging
 import asyncio
@@ -158,6 +161,63 @@ def version():
     Show the version of ValiRef.
     """
     console.print("ValiRef v0.1.0")
+
+@app.command()
+def benchmark(
+    dataset_path: str = typer.Argument(..., help="Path to the CSV dataset file"),
+    output: Optional[str] = typer.Option(None, "--output", "-o", help="Output file for results (JSON)"),
+    workers: int = typer.Option(5, "--workers", "-w", help="Number of concurrent workers"),
+    limit: Optional[int] = typer.Option(None, "--limit", "-l", help="Limit number of samples to test"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose output"),
+):
+    """
+    Run benchmark on a dataset to evaluate hallucination detection performance.
+    """
+    path = Path(dataset_path)
+    if not path.exists():
+        console.print(f"[bold red]Error:[/bold red] Dataset file not found: {dataset_path}")
+        raise typer.Exit(code=1)
+
+    # Adjust logging level
+    if not verbose:
+        logging.getLogger("valiref").setLevel(logging.WARNING)
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+        logging.getLogger("httpcore").setLevel(logging.WARNING)
+
+    async def run_benchmark():
+        detector = HallucinationDetector()
+        runner = BenchmarkRunner(detector)
+
+        if verbose:
+            console.print(f"[bold green]Starting benchmark with {workers} workers...[/bold green]")
+
+        return await runner.run(
+            dataset_path=str(path),
+            max_workers=workers,
+            limit=limit,
+            verbose=True,  # Always show progress bar for benchmark
+        )
+
+    try:
+        result = asyncio.run(run_benchmark())
+
+        # Print results
+        runner = BenchmarkRunner(HallucinationDetector())
+        runner.print_results(result)
+
+        # Save to file if output specified
+        if output:
+            output_path = Path(output)
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(result.to_dict(), f, indent=2)
+            console.print(f"\n[green]Results saved to:[/green] {output_path}")
+
+    except KeyboardInterrupt:
+        console.print("\n[bold yellow]Benchmark interrupted by user[/bold yellow]")
+        raise typer.Exit(code=1)
+    except Exception as e:
+        console.print(f"[bold red]Benchmark failed:[/bold red] {str(e)}")
+        raise typer.Exit(code=1)
 
 if __name__ == "__main__":
     app()
