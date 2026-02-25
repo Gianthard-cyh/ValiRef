@@ -27,6 +27,7 @@ def validate(
     max_workers: int = typer.Option(5, "--workers", "-w", help="Number of concurrent validation threads"),
     output_json: bool = typer.Option(False, "--json", help="Output results in JSON format"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging output"),
+    show_metrics: bool = typer.Option(True, "--metrics/--no-metrics", help="Show real-time tool metrics"),
 ):
     """
     Validate references in a PDF file.
@@ -49,17 +50,22 @@ def validate(
         raise typer.Exit(code=1)
 
     async def run_pipeline():
+        callback = CliCallback(console, show_metrics=show_metrics) if not verbose else None
         pipeline = ValidationPipeline(
-            callbacks=[CliCallback(console)] if not verbose else []
+            callbacks=[callback] if callback else []
         )
         if verbose:
             console.print(f"[bold green]Starting validation for:[/bold green] {path.name}")
-        
+
         return await pipeline.process_pdf(str(path), max_workers=max_workers)
 
     try:
         results = asyncio.run(run_pipeline())
-        
+
+        # 添加工具统计到结果（如果有callback且启用了metrics）
+        if 'callback' in dir() and callback and callback.metrics:
+            results["tool_stats"] = callback.metrics.get_summary()
+
         if output_json:
             console.print(json.dumps(results, indent=2))
         else:

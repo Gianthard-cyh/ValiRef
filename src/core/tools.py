@@ -3,6 +3,7 @@ import random
 import threading
 import asyncio
 from typing import List, Dict, Callable, Union
+from datetime import datetime
 import xml.etree.ElementTree as ET
 from pydantic import BaseModel, Field
 from scholarly import scholarly
@@ -17,6 +18,7 @@ from .config import (
     DUCKDUCKGO_SEARCH_LIMIT,
 )
 from .logger import logger
+from .tool_monitor import tool_call_started, tool_call_ended
 import openreview
 import httpx
 from semanticscholar import SemanticScholar
@@ -64,8 +66,52 @@ class SearchTool:
         return self._rate_limit_states[self.__class__]
 
     async def asearch(self, query: str, limit: int = 5) -> List[SearchResult]:
-        """Asynchronous search method."""
-        return await self._asearch_with_retry(self._perform_asearch, query, limit)
+        """Asynchronous search method with monitoring."""
+        tool_name = self.__class__.__name__
+        start_time = datetime.now()
+
+        # 发布开始信号
+        tool_call_started.send(
+            'searchtool',
+            tool_name=tool_name,
+            query=query,
+            start_time=start_time
+        )
+
+        try:
+            results = await self._asearch_with_retry(self._perform_asearch, query, limit)
+
+            end_time = datetime.now()
+            duration_ms = (end_time - start_time).total_seconds() * 1000
+
+            # 发布成功信号
+            tool_call_ended.send(
+                'searchtool',
+                tool_name=tool_name,
+                query=query,
+                end_time=end_time,
+                duration_ms=duration_ms,
+                success=True,
+                result_count=len(results)
+            )
+            return results
+
+        except Exception as e:
+            end_time = datetime.now()
+            duration_ms = (end_time - start_time).total_seconds() * 1000
+
+            # 发布失败信号
+            tool_call_ended.send(
+                'searchtool',
+                tool_name=tool_name,
+                query=query,
+                end_time=end_time,
+                duration_ms=duration_ms,
+                success=False,
+                result_count=0,
+                error_type=e.__class__.__name__
+            )
+            raise
 
     async def _perform_asearch(self, query: str, limit: int) -> List[SearchResult]:
         """
