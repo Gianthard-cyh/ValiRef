@@ -2,7 +2,7 @@ import time
 import random
 import threading
 import asyncio
-from typing import List, Dict, Callable
+from typing import List, Dict, Callable, Union
 import xml.etree.ElementTree as ET
 from pydantic import BaseModel, Field
 from scholarly import scholarly
@@ -552,12 +552,18 @@ class AggregateSearch:
         )
 
         final_results: List[SearchResult] = []
+        failed_sources: List[str] = []
+
         for i, result in enumerate(results_list):
             source_name = valid_sources[i]
             if isinstance(result, Exception):
                 logger.error(f"Error searching {source_name}: {result}")
+                failed_sources.append(source_name)
             elif result:
                 final_results.extend(result)
+            else:
+                # Empty result (not an error, but no data found)
+                failed_sources.append(source_name)
 
         # Simple deduplication by title (normalized)
         seen_titles = set()
@@ -577,6 +583,20 @@ class AggregateSearch:
                     item.authors.append("et al.")
                 
                 unique_results.append(item)
-                
+
+        # Add markers for failed sources so the model knows which sources didn't return data
+        for source in failed_sources:
+            unique_results.append(
+                SearchResult(
+                    title=f"[Source Unavailable: {source}]",
+                    authors=[],
+                    published_date="N/A",
+                    venue="N/A",
+                    abstract=f"The {source} source did not return any results. This may be due to temporary unavailability or rate limiting.",
+                    url="N/A",
+                    source=f"{source}_unavailable",
+                )
+            )
+
         dicts = [item.model_dump() for item in unique_results]
         return dicts
