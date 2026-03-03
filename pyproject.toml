@@ -6,7 +6,7 @@ readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.12"
 authors = [
-    {name = "Your Name", email = "your.email@example.com"}
+    {name = "0xfe", email = "2953427626@qq.com"}
 ]
 keywords = ["academic", "citations", "hallucination", "validation", "ai", "llm", "research"]
 classifiers = [
@@ -19,6 +19,25 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Education",
+]
+dependencies = [
+    "arxiv>=2.4.0",
+    "blinker>=1.9.0",
+    "ddgs>=9.10.0",
+    "google-search-results>=2.4.2",
+    "httpx>=0.28.1",
+    "langchain>=1.2.10",
+    "langchain-deepseek>=1.0.1",
+    "langgraph>=1.0.8",
+    "openreview-py>=1.57.0",
+    "pymupdf>=1.27.1",
+    "python-dotenv>=1.2.1",
+    "ratelimit>=2.2.1",
+    "rich>=14.3.2",
+    "scholarly>=1.7.11",
+    "semanticscholar>=0.11.0",
+    "socksio>=1.0.0",
+    "typer>=0.9.0",
 ]
 
 [project.urls]
@@ -33,31 +52,13 @@ valiref = "src.cli:app"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["src*"]
-dependencies = [
-    "arxiv>=2.4.0",
-    "blinker>=1.9.0",
-    "ddgs>=9.10.0",
-    "google-search-results>=2.4.2",
-    "httpx>=0.28.1",
-    "langchain>=1.2.10",
-    "langgraph>=1.0.8",
-    "openreview-py>=1.57.0",
-    "pymupdf>=1.27.1",
-    "python-dotenv>=1.2.1",
-    "ratelimit>=2.2.1",
-    "rich>=14.3.2",
-    "scholarly>=1.7.11",
-    "semanticscholar>=0.11.0",
-    "socksio>=1.0.0",
-    "typer>=0.9.0",
-]
 
 [dependency-groups]
 dev = [
-    "langchain-deepseek>=1.0.1",
     "ruff>=0.15.1",
     "pytest>=9.0.0",
     "pytest-asyncio>=1.3.0",
+    "twine>=6.2.0",
 ]
 
 [tool.pytest.ini_options]
