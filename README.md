@@ -38,10 +38,10 @@ ValiRef is an intelligent tool designed to detect **hallucinated citations** in 
 - 🔍 **Multi-Source Verification** - Cross-references citations against ArXiv, Google Scholar, Semantic Scholar, OpenReview, OpenAlex, and DuckDuckGo
 - 🤖 **AI-Powered Detection** - Uses DeepSeek LLM with ReAct reasoning to analyze search results
 - ⚡ **Async-First Architecture** - Concurrent validation of multiple references for optimal performance
-- 📊 **Rich CLI Output** - Beautiful terminal interface with progress bars and detailed reports
+- 📊 **Rich CLI Output** - Beautiful terminal interface with progress bars, real-time metrics, and detailed reports
 - 📈 **Benchmark Suite** - Built-in dataset generation and evaluation framework
-- 🛡️ **Rate Limiting** - Respects API limits with intelligent retry logic
-- 🎯 **High Accuracy** - Confidence scoring with detailed reasoning for each validation
+- 🛡️ **Resilient API Handling** - Token bucket rate limiting + circuit breaker pattern for reliable external API calls
+- 🎯 **High Accuracy** - 72%+ accuracy on 100-sample benchmark with confidence scoring and detailed reasoning
 
 ---
 
@@ -50,14 +50,20 @@ ValiRef is an intelligent tool designed to detect **hallucinated citations** in 
 ### Prerequisites
 
 - Python 3.12 or higher
-- [uv](https://docs.astral.sh/uv/) package manager
+- [uv](https://docs.astral.sh/uv/) package manager (recommended) or pip
 
-### Quick Start
+### Install from PyPI (Recommended)
+
+```bash
+pip install valiref
+```
+
+### Install from Source
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/valiref.git
-cd valiref
+git clone https://github.com/Gianthard-cyh/ValiRef.git
+cd ValiRef
 
 # Install dependencies
 uv sync
@@ -92,16 +98,16 @@ LANGCHAIN_PROJECT=ValiRef
 
 ```bash
 # Basic usage
-uv run python main.py validate paper.pdf
+uv run python -m src.cli validate paper.pdf
 
 # With concurrent workers (default: 5)
-uv run python main.py validate paper.pdf --workers 10
+uv run python -m src.cli validate paper.pdf --workers 10
 
 # Output as JSON
-uv run python main.py validate paper.pdf --json
+uv run python -m src.cli validate paper.pdf --json
 
 # Enable verbose logging
-uv run python main.py validate paper.pdf --verbose
+uv run python -m src.cli validate paper.pdf --verbose
 ```
 
 ### Example Output
@@ -168,16 +174,58 @@ The HallucinationDetector uses a ReAct (Reasoning + Acting) agent powered by Dee
 - Evaluates claims against actual paper content
 - Provides confidence scores with detailed reasoning
 
-### 4. Concurrent Processing
-- Async/await throughout for non-blocking I/O
-- Semaphore-controlled concurrency (configurable workers)
-- Rate limiting per source to respect API constraints
+### Resilient API Architecture
+
+ValiRef implements a production-grade resilience layer for external API calls:
+
+```
+┌─────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│  SearchTool │────▶│ ToolRequestQueue│────▶│  Token Bucket   │
+│  (per source)│     │  (rate limiter) │     │ (smooth flow)   │
+└─────────────┘     └─────────────────┘     └─────────────────┘
+                              │
+                              ▼
+                     ┌─────────────────┐
+                     │ Circuit Breaker │
+                     │ (fail-fast for  │
+                     │  unhealthy APIs)│
+                     └─────────────────┘
+```
+
+**Features:**
+- **Token Bucket Rate Limiting** - Smooth request flow with configurable burst capacity per source
+- **Circuit Breaker Pattern** - Automatically stops requests to failing services (3 failures → OPEN, 15s recovery timeout)
+- **Real-time Metrics** - Live display of API call statistics, active requests, and circuit states
+- **Graceful Degradation** - Failed sources are marked unavailable but don't block other sources
 
 ---
 
 ## Benchmark
 
 ValiRef includes a comprehensive benchmark suite for evaluating hallucination detection performance.
+
+### Performance Results
+
+On a 100-sample mixed dataset:
+
+| Metric | Value |
+|--------|-------|
+| **Accuracy** | 72.0% |
+| **Precision** | 1.0000 |
+| **Recall** | 0.2800 (Counterfactual) / 1.0000 (Fabrication) |
+| **F1 Score** | 0.4375 (Counterfactual) / 1.0000 (Fabrication) |
+| **Throughput** | ~0.09 samples/sec |
+| **Duration** | ~18 min (100 samples) |
+
+### Per-Type Performance
+
+| Hallucination Type | Accuracy | Precision | Recall | F1 Score | Samples |
+|-------------------|----------|-----------|--------|----------|---------|
+| Fabrication | 100% | 1.0000 | 1.0000 | 1.0000 | 19 |
+| AttributionError | 100% | 1.0000 | 1.0000 | 1.0000 | 19 |
+| Irrelevance | 74% | 1.0000 | 0.7368 | 0.8485 | 19 |
+| Counterfactual | 28% | 1.0000 | 0.2800 | 0.4375 | 25 |
+| Real Papers | 72% | 0.0000 | 0.0000 | 0.0000 | 18 |
 
 ### Generate Benchmark Dataset
 
@@ -221,22 +269,26 @@ uv run pytest tests/core/test_tools.py -v
 valiref/
 ├── src/
 │   ├── cli.py                 # Typer-based CLI interface
-│   ├── cli_callbacks.py       # Progress callbacks
+│   ├── cli_callbacks.py       # Progress callbacks and Live display
 │   ├── core/                  # Core validation engine
 │   │   ├── pipeline.py        # Async validation orchestration
 │   │   ├── detector.py        # LLM-based hallucination detection
 │   │   ├── extract.py         # PDF/text extraction
-│   │   ├── tools.py           # Academic search tools
+│   │   ├── tools.py           # Academic search tools with rate limiting
+│   │   ├── search_queue.py    # Token bucket + circuit breaker
+│   │   ├── tool_monitor.py    # Real-time metrics via blinker signals
 │   │   ├── config.py          # Configuration management
 │   │   └── logger.py          # Rich-based logging
 │   ├── bench/                 # Benchmark framework
 │   │   ├── crawler.py         # ArXiv paper crawler
 │   │   ├── dataset.py         # Hallucination injection
+│   │   ├── bench.py           # Benchmark runner with live metrics
 │   │   └── schema.py          # Pydantic data models
 │   └── api/                   # API interface (future)
 ├── scripts/
 │   └── generate_dataset.py    # Dataset generation script
-└── tests/                     # Test suite
+├── tests/                     # Test suite
+└── data/                      # Benchmark datasets
 ```
 
 ---

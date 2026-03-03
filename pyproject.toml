@@ -1,13 +1,42 @@
 [project]
 name = "valiref"
 version = "0.1.0"
-description = "Add your description here"
+description = "AI-Powered Citation Validation for Academic Papers"
 readme = "README.md"
+license = {text = "MIT"}
 requires-python = ">=3.12"
+authors = [
+    {name = "Your Name", email = "your.email@example.com"}
+]
+keywords = ["academic", "citations", "hallucination", "validation", "ai", "llm", "research"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Education",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Education",
+]
+
+[project.urls]
+Homepage = "https://github.com/Gianthard-cyh/ValiRef"
+Repository = "https://github.com/Gianthard-cyh/ValiRef"
+Documentation = "https://github.com/Gianthard-cyh/ValiRef#readme"
+Issues = "https://github.com/Gianthard-cyh/ValiRef/issues"
+
+[project.scripts]
+valiref = "src.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
 dependencies = [
     "arxiv>=2.4.0",
     "blinker>=1.9.0",
-    "duckduckgo-search>=8.1.1",
+    "ddgs>=9.10.0",
     "google-search-results>=2.4.2",
     "httpx>=0.28.1",
     "langchain>=1.2.10",
@@ -28,6 +57,7 @@ dev = [
     "langchain-deepseek>=1.0.1",
     "ruff>=0.15.1",
     "pytest>=9.0.0",
+    "pytest-asyncio>=1.3.0",
 ]
 
 [tool.pytest.ini_options]

@@ -2,7 +2,6 @@ import typer
 from pathlib import Path
 from typing import Optional
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
 from rich.text import Text
 from rich import box
@@ -21,13 +20,22 @@ app = typer.Typer(
 )
 console = Console()
 
+
 @app.command()
 def validate(
     pdf_path: str = typer.Argument(..., help="Path to the PDF file to validate"),
-    max_workers: int = typer.Option(5, "--workers", "-w", help="Number of concurrent validation threads"),
-    output_json: bool = typer.Option(False, "--json", help="Output results in JSON format"),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging output"),
-    show_metrics: bool = typer.Option(True, "--metrics/--no-metrics", help="Show real-time tool metrics"),
+    max_workers: int = typer.Option(
+        5, "--workers", "-w", help="Number of concurrent validation threads"
+    ),
+    output_json: bool = typer.Option(
+        False, "--json", help="Output results in JSON format"
+    ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Enable verbose logging output"
+    ),
+    show_metrics: bool = typer.Option(
+        True, "--metrics/--no-metrics", help="Show real-time tool metrics"
+    ),
 ):
     """
     Validate references in a PDF file.
@@ -55,7 +63,9 @@ def validate(
             callbacks=[callback] if callback else []
         )
         if verbose:
-            console.print(f"[bold green]Starting validation for:[/bold green] {path.name}")
+            console.print(
+                f"[bold green]Starting validation for:[/bold green] {path.name}"
+            )
 
         return await pipeline.process_pdf(str(path), max_workers=max_workers)
 
@@ -70,7 +80,7 @@ def validate(
             console.print(json.dumps(results, indent=2))
         else:
             _print_results(results)
-            
+
     except KeyboardInterrupt:
         console.print("\n[bold yellow]Operation interrupted by user[/bold yellow]")
         raise typer.Exit(code=1)
@@ -78,15 +88,18 @@ def validate(
         console.print(f"[bold red]An error occurred:[/bold red] {str(e)}")
         raise typer.Exit(code=1)
 
+
 def _print_results(results: dict):
     """
     Print validation results in a nice table format.
     """
-    console.print(f"\n[bold]Validation Summary for {results.get('file', 'Unknown')}[/bold]")
+    console.print(
+        f"\n[bold]Validation Summary for {results.get('file', 'Unknown')}[/bold]"
+    )
     console.print(f"Total References: {results.get('references_count', 0)}")
     console.print(f"Validated: {results.get('validated_count', 0)}")
     console.print(f"Duration: {results.get('duration_seconds', 0):.2f}s")
-    
+
     console.print("\n[bold]Detailed Report[/bold]")
 
     for i, item in enumerate(results.get("results", []), 1):
@@ -97,20 +110,20 @@ def _print_results(results: dict):
             authors = ", ".join(authors_list)
         else:
             authors = str(authors_list)
-        
+
         validation = item.get("validation", {})
         # Handle cases where validation might be None or empty
         if not validation:
-             is_hallucination = None
-             confidence = 0.0
-             reasoning = "Validation failed or not performed."
-             evidence = []
+            is_hallucination = None
+            confidence = 0.0
+            reasoning = "Validation failed or not performed."
+            evidence = []
         else:
             is_hallucination = validation.get("is_hallucination")
             confidence = validation.get("confidence", 0.0)
             reasoning = validation.get("reasoning", "No reasoning provided.")
             evidence = validation.get("evidence", [])
-        
+
         # Color coding and Status
         if is_hallucination is True:
             border_style = "red"
@@ -124,16 +137,16 @@ def _print_results(results: dict):
             border_style = "yellow"
             status_text = "[bold yellow]UNKNOWN / ERROR[/bold yellow]"
             icon = "⚠️"
-            
+
         content = Text()
         content.append(f"Title: {title}\n", style="bold")
         if authors:
             content.append(f"Authors: {authors}\n", style="italic")
         content.append(f"Confidence: {confidence:.2f}\n")
-        
+
         content.append("\nReasoning:\n", style="bold underline")
         content.append(f"{reasoning}\n")
-        
+
         if evidence:
             content.append("\nEvidence / Sources:\n", style="bold underline")
             for item in evidence:
@@ -144,22 +157,27 @@ def _print_results(results: dict):
                     content.append(f"- {item_str}\n")
         else:
             if is_hallucination is False:
-                 content.append("\nEvidence / Sources:\n", style="bold underline")
-                 content.append("No direct link found, but verified as real.\n", style="dim")
+                content.append("\nEvidence / Sources:\n", style="bold underline")
+                content.append(
+                    "No direct link found, but verified as real.\n", style="dim"
+                )
             elif is_hallucination is True:
-                 content.append("\nEvidence / Sources:\n", style="bold underline")
-                 content.append("No supporting evidence found (expected for hallucinations).\n", style="dim")
-
+                content.append("\nEvidence / Sources:\n", style="bold underline")
+                content.append(
+                    "No supporting evidence found (expected for hallucinations).\n",
+                    style="dim",
+                )
 
         panel = Panel(
             content,
             title=f"{icon} Reference #{i} - {status_text}",
             border_style=border_style,
             expand=False,
-            box=box.ROUNDED
+            box=box.ROUNDED,
         )
         console.print(panel)
-        console.print("") # Add spacing
+        console.print("")  # Add spacing
+
 
 @app.command()
 def version():
@@ -168,20 +186,31 @@ def version():
     """
     console.print("ValiRef v0.1.0")
 
+
 @app.command()
 def benchmark(
     dataset_path: str = typer.Argument(..., help="Path to the CSV dataset file"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Output file for results (JSON)"),
-    workers: int = typer.Option(5, "--workers", "-w", help="Number of concurrent workers"),
-    limit: Optional[int] = typer.Option(None, "--limit", "-l", help="Limit number of samples to test"),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose output"),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output file for results (JSON)"
+    ),
+    workers: int = typer.Option(
+        5, "--workers", "-w", help="Number of concurrent workers"
+    ),
+    limit: Optional[int] = typer.Option(
+        None, "--limit", "-l", help="Limit number of samples to test"
+    ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Enable verbose output"
+    ),
 ):
     """
     Run benchmark on a dataset to evaluate hallucination detection performance.
     """
     path = Path(dataset_path)
     if not path.exists():
-        console.print(f"[bold red]Error:[/bold red] Dataset file not found: {dataset_path}")
+        console.print(
+            f"[bold red]Error:[/bold red] Dataset file not found: {dataset_path}"
+        )
         raise typer.Exit(code=1)
 
     # Adjust logging level
@@ -195,7 +224,9 @@ def benchmark(
         runner = BenchmarkRunner(detector)
 
         if verbose:
-            console.print(f"[bold green]Starting benchmark with {workers} workers...[/bold green]")
+            console.print(
+                f"[bold green]Starting benchmark with {workers} workers...[/bold green]"
+            )
 
         return await runner.run(
             dataset_path=str(path),
@@ -224,6 +255,7 @@ def benchmark(
     except Exception as e:
         console.print(f"[bold red]Benchmark failed:[/bold red] {str(e)}")
         raise typer.Exit(code=1)
+
 
 if __name__ == "__main__":
     app()

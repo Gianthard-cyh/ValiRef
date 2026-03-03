@@ -2,9 +2,10 @@ from typing import List, Dict, Any
 from abc import ABC
 from ..bench.schema import Paper
 
+
 class ValidationCallback(ABC):
     """Base class for validation pipeline callbacks."""
-    
+
     def on_pipeline_start(self, filename: str):
         """Called when the pipeline starts processing a file."""
         pass

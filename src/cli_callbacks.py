@@ -1,7 +1,14 @@
 from typing import List, Dict, Any, Optional
 from rich.console import Console
 from rich.live import Live
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskID, TimeRemainingColumn
+from rich.progress import (
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    BarColumn,
+    TaskID,
+    TimeRemainingColumn,
+)
 from rich import box
 from src.core.callbacks import ValidationCallback
 from src.core.tool_monitor import ToolMetricsCollector
@@ -22,7 +29,7 @@ class CliCallback(ValidationCallback):
             TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
             TimeRemainingColumn(),
             console=console,
-            transient=True
+            transient=True,
         )
         self.extraction_task: Optional[TaskID] = None
         self.validation_task: Optional[TaskID] = None
@@ -30,8 +37,10 @@ class CliCallback(ValidationCallback):
     def on_pipeline_start(self, filename: str):
         """启动Live显示和进度条"""
         if self.show_metrics:
-            # 创建collector，传入更新回调
-            self.metrics = ToolMetricsCollector(on_update=self._on_metrics_update)
+            # Create metrics collector without tool instances (signal-based tracking)
+            self.metrics = ToolMetricsCollector(
+                on_update=self._on_metrics_update
+            )
             # 启动Live显示工具统计
             self.live = Live(
                 self.metrics.get_stats_table(),
@@ -42,7 +51,9 @@ class CliCallback(ValidationCallback):
             self.live.start()
 
         self.progress.start()
-        self.extraction_task = self.progress.add_task(f"Extracting references from {filename}...", total=None)
+        self.extraction_task = self.progress.add_task(
+            f"Extracting references from {filename}...", total=None
+        )
 
     def _on_metrics_update(self):
         """指标更新时刷新Live"""
@@ -51,11 +62,15 @@ class CliCallback(ValidationCallback):
 
     def on_extraction_end(self, references: List[Paper]):
         if self.extraction_task is not None:
-            self.progress.update(self.extraction_task, completed=1, total=1, visible=False)
+            self.progress.update(
+                self.extraction_task, completed=1, total=1, visible=False
+            )
         self.console.print(f"Extracted {len(references)} references.")
 
     def on_validation_start(self, total_references: int):
-        self.validation_task = self.progress.add_task("Validating references...", total=total_references)
+        self.validation_task = self.progress.add_task(
+            "Validating references...", total=total_references
+        )
 
     def on_reference_validation_end(self, paper: Paper, result: Dict[str, Any]):
         if self.validation_task is not None:
@@ -63,7 +78,9 @@ class CliCallback(ValidationCallback):
 
     def on_reference_validation_error(self, paper: Paper, error: Exception):
         # Print error above the progress bar
-        self.progress.console.print(f"[red]Error validating '{paper.title[:30]}...': {error}[/red]")
+        self.progress.console.print(
+            f"[red]Error validating '{paper.title[:30]}...': {error}[/red]"
+        )
         if self.validation_task is not None:
             self.progress.advance(self.validation_task)
 

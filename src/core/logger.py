@@ -32,7 +32,7 @@ def setup_logger(name: str = "valiref", level: int = logging.INFO) -> logging.Lo
                 show_path=True,
             )
         ],
-        force=True
+        force=True,
     )
 
     # Get the specific logger

@@ -1,3 +1,4 @@
+import asyncio
 from typing import List
 from pydantic import BaseModel, Field
 from langchain_deepseek import ChatDeepSeek
@@ -18,6 +19,10 @@ from .config import (
 from .tools import AggregateSearch
 from .logger import logger
 
+# Agent execution timeout in seconds
+AGENT_TIMEOUT = 60
+
+
 class ValidationResult(BaseModel):
     is_hallucination: bool = Field(
         description="True if the reference is likely a hallucination"
@@ -28,6 +33,7 @@ class ValidationResult(BaseModel):
         default_factory=list,
         description="URLs found that support the judgment",
     )
+
 
 class HallucinationDetector:
     def __init__(self):
@@ -97,11 +103,11 @@ class HallucinationDetector:
             "2. If not found, try adding 'openreview' or 'duckduckgo' to the sources list.\n"
             "3. Verify if the Title, Authors, and Date match the query.\n"
             "4. Be careful about Attribution Errors (real title but wrong authors).\n"
-            "5. Gather enough evidence to make a definitive judgment.\n"
-            "6. Once you have a conclusion, YOU MUST CALL the `submit_validation_result` tool to submit your findings.\n"
+            "5. Use less than 5 rounds of conversation.\n"
+            "6. Once you gathered enough information have a conclusion, YOU MUST CALL the `submit_validation_result` tool to submit your findings.\n"
             "   - is_hallucination: True if it's fake or attribution error, False if real.\n"
             "   - confidence: 0.0 to 1.0\n"
-            "   - reasoning: Detailed explanation.\n"
+            "   - reasoning: Brief explanation.\n"
             "   - evidence: List of URLs that support your judgment. If URL is not available, provide the source name."
         )
 
@@ -169,17 +175,30 @@ class HallucinationDetector:
         )
 
         try:
-            # Asynchronous invoke
-            response = await self.agent_executor.ainvoke(
-                {
-                    "messages": [
-                        SystemMessage(content=self._get_system_prompt()),
-                        HumanMessage(content=user_prompt),
-                    ]
-                }
+            # Asynchronous invoke with timeout to prevent infinite loops
+            response = await asyncio.wait_for(
+                self.agent_executor.ainvoke(
+                    {
+                        "messages": [
+                            SystemMessage(content=self._get_system_prompt()),
+                            HumanMessage(content=user_prompt),
+                        ]
+                    }
+                ),
+                timeout=AGENT_TIMEOUT,
             )
             return self._parse_agent_response(response)
 
+        except asyncio.TimeoutError:
+            logger.error(
+                f"Agent timeout after {AGENT_TIMEOUT}s for: {reference.title[:50]}..."
+            )
+            return ValidationResult(
+                is_hallucination=True,
+                confidence=0.5,
+                reasoning=f"Validation timeout after {AGENT_TIMEOUT}s - agent took too long to respond",
+                evidence=[],
+            )
         except KeyboardInterrupt:
             logger.warning("Validation interrupted by user.")
             raise

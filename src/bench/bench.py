@@ -1,5 +1,7 @@
 import csv
 import asyncio
+import random
+import time
 from typing import List, Optional, Dict, Any
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -11,7 +13,8 @@ from rich.progress import (
     TaskProgressColumn,
     TimeRemainingColumn,
 )
-from rich.console import Console
+from rich.console import Console, Group
+from rich.live import Live
 from rich.table import Table
 from rich.panel import Panel
 from rich import box
@@ -19,6 +22,7 @@ from rich import box
 from .schema import Paper
 from ..core.detector import HallucinationDetector, ValidationResult
 from ..core.logger import logger
+from ..core.tool_monitor import ToolMetricsCollector
 
 
 @dataclass
@@ -102,7 +106,9 @@ class BenchmarkRunner:
                 # Parse list fields (authors, claims) that are "; " separated
                 authors = []
                 if row.get("authors"):
-                    authors = [a.strip() for a in row["authors"].split(";") if a.strip()]
+                    authors = [
+                        a.strip() for a in row["authors"].split(";") if a.strip()
+                    ]
 
                 claims = []
                 if row.get("claims"):
@@ -189,41 +195,66 @@ class BenchmarkRunner:
         Returns:
             BenchmarkResult with metrics and sample results
         """
-        import time
-
         start_time = time.time()
 
         # Load dataset
         papers = self._load_dataset(dataset_path)
+        random.shuffle(papers)
         if limit and limit > 0:
             papers = papers[:limit]
 
-        logger.info(f"Running benchmark on {len(papers)} samples with {max_workers} workers")
+        logger.info(
+            f"Running benchmark on {len(papers)} samples with {max_workers} workers"
+        )
 
-        # Run validation with progress bar
-        samples: List[SampleResult] = []
+        # Create tool metrics collector
+        metrics_collector = ToolMetricsCollector()
 
-        with Progress(
+        # Create progress bar
+        progress = Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
             TaskProgressColumn(),
             TimeRemainingColumn(),
             console=self.console,
-            disable=not verbose,
-        ) as progress:
+        )
+
+        # Run validation with Live display showing both progress and metrics
+        samples: List[SampleResult] = []
+
+        with Live(
+            console=self.console,
+            refresh_per_second=2,
+        ) as live:
             task = progress.add_task("[cyan]Validating samples...", total=len(papers))
+
+            # Update display function
+            def update_display():
+                # Combine progress and metrics table
+                metrics_table = metrics_collector.get_stats_table()
+                group = Group(
+                    progress,
+                    metrics_table if metrics_collector.get_summary()["total_calls"] > 0 else ""
+                )
+                live.update(group)
+
+            # Set callback for metrics updates
+            metrics_collector._on_update = update_display
 
             semaphore = asyncio.Semaphore(max_workers)
 
             async def validate_sample(paper: Paper) -> SampleResult:
                 ground_truth = self._is_hallucinated(paper)
+                sample_start = time.time()
+
+                logger.info(f"[Benchmark] Starting validation: {paper.title[:50]}...")
 
                 try:
                     prediction = await self.detector.acheck_reference(paper)
                     predicted_hallucination = prediction.is_hallucination
                 except Exception as e:
-                    logger.error(f"Error validating {paper.title}: {e}")
+                    logger.error(f"[Benchmark] Error validating {paper.title}: {e}")
                     # Treat errors as hallucination detection failures
                     prediction = ValidationResult(
                         is_hallucination=True,
@@ -233,9 +264,16 @@ class BenchmarkRunner:
                     )
                     predicted_hallucination = True
 
+                elapsed = time.time() - sample_start
                 correct = predicted_hallucination == ground_truth
 
+                logger.info(
+                    f"[Benchmark] Completed: {paper.title[:40]}... "
+                    f"({elapsed:.1f}s, correct={correct})"
+                )
+
                 progress.update(task, advance=1)
+                update_display()
 
                 return SampleResult(
                     paper=paper,

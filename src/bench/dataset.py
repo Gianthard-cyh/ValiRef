@@ -18,13 +18,14 @@ from .schema import Paper
 from .crawler import PaperCrawler
 from ..core.logger import logger
 from ..core.config import (
-    DEEPSEEK_API_KEY, 
+    DEEPSEEK_API_KEY,
     LLM_MODEL,
     LLM_TEMPERATURE,
     LLM_MAX_TOKENS,
     LLM_TIMEOUT,
-    LLM_MAX_RETRIES
+    LLM_MAX_RETRIES,
 )
+
 
 class FakePaper(BaseModel):
     title: str = Field(description="The title of the fake paper")

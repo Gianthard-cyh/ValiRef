@@ -1,28 +1,36 @@
-import time
-import random
-import threading
 import asyncio
-from typing import List, Dict, Callable, Union
+import random
+import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 import xml.etree.ElementTree as ET
+
+import httpx
+from ddgs import DDGS
 from pydantic import BaseModel, Field
 from scholarly import scholarly
+from semanticscholar import SemanticScholar
+
 from .config import (
-    SCHOLAR_RATE_LIMIT_CALLS,
-    SCHOLAR_RATE_LIMIT_PERIOD,
-    ARXIV_RATE_LIMIT_DELAY,
-    SEMANTIC_SCHOLAR_RATE_LIMIT_DELAY,
+    CIRCUIT_BREAKER_FAILURE_THRESHOLD,
+    CIRCUIT_BREAKER_HALF_OPEN_CALLS,
+    CIRCUIT_BREAKER_RECOVERY_TIMEOUT,
+    DUCKDUCKGO_SEARCH_LIMIT,
+    OPENALEX_SEARCH_LIMIT,
     SCHOLAR_SEARCH_LIMIT,
     SEMANTIC_SCHOLAR_API_KEY,
-    OPENALEX_SEARCH_LIMIT,
-    DUCKDUCKGO_SEARCH_LIMIT,
+    TOKEN_BUCKET_BURST_SIZE,
+    TOKEN_BUCKET_RATE_ARXIV,
+    TOKEN_BUCKET_RATE_DUCKDUCKGO,
+    TOKEN_BUCKET_RATE_OPENALEX,
+    TOKEN_BUCKET_RATE_OPENREVIEW,
+    TOKEN_BUCKET_RATE_SCHOLAR,
+    TOKEN_BUCKET_RATE_SEMANTIC_SCHOLAR,
 )
 from .logger import logger
-from .tool_monitor import tool_call_started, tool_call_ended
-import openreview
-import httpx
-from semanticscholar import SemanticScholar
-from duckduckgo_search import DDGS
+from .search_queue import CircuitBreakerOpen, SearchTask, ToolRequestQueue
+from .tool_monitor import tool_call_ended, tool_call_started
 
 
 class SearchResult(BaseModel):
@@ -39,38 +47,96 @@ class SearchResult(BaseModel):
     source: str = Field(..., description="Source of the result")
 
 
+T = TypeVar('T')
+
+# Shared thread pool for sync operations
+_sync_executor = ThreadPoolExecutor(max_workers=10, thread_name_prefix="search_sync_")
+
+async def run_in_executor_cancellable(
+    func: Callable[..., T],
+    *args,
+    timeout: Optional[float] = None
+) -> T:
+    """
+    Run a synchronous function in a thread pool with proper cancellation support.
+
+    Unlike raw asyncio.run_in_executor, this properly propagates CancelledError
+    to the caller. The thread continues executing in background but the asyncio
+    task is properly cancelled.
+    """
+    loop = asyncio.get_running_loop()
+
+    # Submit to shared thread pool
+    future = _sync_executor.submit(func, *args)
+
+    try:
+        if timeout:
+            # Use wait_for for timeout support
+            return await asyncio.wait_for(
+                asyncio.wrap_future(future),
+                timeout=timeout
+            )
+        else:
+            return await asyncio.wrap_future(future)
+    except asyncio.CancelledError:
+        # Cancel the future if possible
+        future.cancel()
+        raise
 class SearchTool:
     """
-    Base class for search tools with thread-safe and async-aware backoff mechanism.
-    Maintains global state per subclass to handle rate limits across all instances.
+    Base class for search tools with queue-based rate limiting and circuit breaker protection.
+
+    Each tool instance has its own ToolRequestQueue that provides:
+    - Token bucket rate limiting (smooth request flow)
+    - Circuit breaker pattern (fail-fast for failing services)
+    - Proper cancellation handling (Ctrl+C safe)
     """
 
-    # Global state for rate limiting, shared across all instances of the same tool class
-    _rate_limit_states = {}
-    _state_lock = threading.Lock()
-    
-    # Subclasses should override this to set a specific rate limit delay
-    rate_limit_delay = 0.0
+    # Subclasses should override this to set the token bucket rate
+    token_bucket_rate = 1.0  # tokens per second
 
     def __init__(self):
-        # Initialize state for this class if not exists
-        with self._state_lock:
-            if self.__class__ not in self._rate_limit_states:
-                self._rate_limit_states[self.__class__] = {
-                    "lock": threading.Lock(),
-                    "backoff_until": 0,
-                }
+        """Initialize the tool with its own request queue."""
+        self._queue = ToolRequestQueue(
+            tool_name=self.__class__.__name__,
+            token_bucket_rate=self.token_bucket_rate,
+            token_bucket_burst=TOKEN_BUCKET_BURST_SIZE,
+            circuit_failure_threshold=CIRCUIT_BREAKER_FAILURE_THRESHOLD,
+            circuit_recovery_timeout=CIRCUIT_BREAKER_RECOVERY_TIMEOUT,
+            half_open_max_calls=CIRCUIT_BREAKER_HALF_OPEN_CALLS,
+        )
 
-    @property
-    def _state(self):
-        return self._rate_limit_states[self.__class__]
+    def search(self, query: str, limit: int = 5) -> List[Dict]:
+        """
+        Synchronous search method.
+
+        Runs the async asearch() method using asyncio.run().
+        Note: This cannot be called from within an existing async event loop.
+
+        Args:
+            query: The search query
+            limit: Maximum number of results to return
+
+        Returns:
+            List of result dictionaries
+        """
+        return asyncio.run(self.asearch(query, limit))
 
     async def asearch(self, query: str, limit: int = 5) -> List[SearchResult]:
-        """Asynchronous search method with monitoring."""
+        """
+        Asynchronous search method with queue-based rate limiting and monitoring.
+
+        Args:
+            query: The search query
+            limit: Maximum number of results to return
+
+        Returns:
+            List of SearchResult objects
+        """
         tool_name = self.__class__.__name__
         start_time = datetime.now()
 
-        # 发布开始信号
+        # Publish start signal
         tool_call_started.send(
             'searchtool',
             tool_name=tool_name,
@@ -78,40 +144,120 @@ class SearchTool:
             start_time=start_time
         )
 
+        task = SearchTask(
+            task_id=f"{tool_name}_{time.time():.6f}",
+            query=query,
+            limit=limit,
+        )
+
         try:
-            results = await self._asearch_with_retry(self._perform_asearch, query, limit)
+            # Execute with rate limiting and circuit breaker
+            result = await self._queue.execute(task, self._execute_search_task)
+            self._emit_end_signal(tool_name, query, start_time, True, len(result))
+            return result
 
-            end_time = datetime.now()
-            duration_ms = (end_time - start_time).total_seconds() * 1000
+        except CircuitBreakerOpen:
+            logger.warning(f"[{tool_name}] Circuit breaker is OPEN - failing fast")
+            self._emit_end_signal(tool_name, query, start_time, False, 0, "CircuitBreakerOpen")
+            return []
 
-            # 发布成功信号
-            tool_call_ended.send(
-                'searchtool',
-                tool_name=tool_name,
-                query=query,
-                end_time=end_time,
-                duration_ms=duration_ms,
-                success=True,
-                result_count=len(results)
-            )
-            return results
+        except asyncio.CancelledError:
+            logger.info(f"[{tool_name}] Search cancelled: {query}")
+            self._emit_end_signal(tool_name, query, start_time, False, 0, "Cancelled")
+            raise
 
         except Exception as e:
-            end_time = datetime.now()
-            duration_ms = (end_time - start_time).total_seconds() * 1000
+            logger.error(f"[{tool_name}] Search failed: {e}")
+            self._emit_end_signal(tool_name, query, start_time, False, 0, e.__class__.__name__)
+            return []
 
-            # 发布失败信号
-            tool_call_ended.send(
-                'searchtool',
-                tool_name=tool_name,
-                query=query,
-                end_time=end_time,
-                duration_ms=duration_ms,
-                success=False,
-                result_count=0,
-                error_type=e.__class__.__name__
-            )
-            raise
+    def _emit_end_signal(
+        self,
+        tool_name: str,
+        query: str,
+        start_time: datetime,
+        success: bool,
+        result_count: int,
+        error_type: str = None
+    ):
+        """Emit tool call end signal."""
+        end_time = datetime.now()
+        duration_ms = (end_time - start_time).total_seconds() * 1000
+
+        tool_call_ended.send(
+            'searchtool',
+            tool_name=tool_name,
+            query=query,
+            end_time=end_time,
+            duration_ms=duration_ms,
+            success=success,
+            result_count=result_count,
+            error_type=error_type
+        )
+
+    async def _execute_search_task(self, task: SearchTask) -> List[SearchResult]:
+        """
+        Execute the actual search with retry logic.
+        This is called by the queue after rate limiting.
+        """
+        return await self._asearch_with_retry(task)
+
+    async def _asearch_with_retry(self, task: SearchTask) -> List[SearchResult]:
+        """
+        Execute search with exponential backoff for transient failures.
+        Circuit breaker handles persistent failures.
+        """
+        max_retries = task.max_retries
+        base_backoff = 1.0
+
+        for attempt in range(max_retries + 1):
+            try:
+                return await self._perform_asearch(task.query, task.limit)
+
+            except asyncio.CancelledError:
+                logger.info(
+                    f"[{self.__class__.__name__}] Task cancelled. Exiting retry loop."
+                )
+                raise
+
+            except httpx.HTTPStatusError as e:
+                # Handle 429 Too Many Requests specifically
+                if e.response.status_code == 429 and attempt < max_retries:
+                    retry_after = e.response.headers.get("Retry-After")
+                    if retry_after:
+                        try:
+                            backoff_duration = float(retry_after) + 1.0
+                        except ValueError:
+                            backoff_duration = (base_backoff * (2**attempt)) + random.uniform(0, 1)
+                    else:
+                        backoff_duration = (base_backoff * (2**attempt)) + random.uniform(0, 1)
+
+                    logger.warning(
+                        f"[{self.__class__.__name__}] 429 Too Many Requests. "
+                        f"Retrying in {backoff_duration:.2f}s... (attempt {attempt + 1}/{max_retries})"
+                    )
+                    # Notify circuit breaker of the failure even though we're retrying
+                    # This ensures the circuit opens when service is consistently rate-limiting
+                    self._queue.circuit_breaker.record_failure()
+                    await asyncio.sleep(backoff_duration)
+                    continue
+                else:
+                    # Don't retry other HTTP errors or if exhausted
+                    raise
+
+            except Exception as e:
+                if attempt < max_retries:
+                    backoff_duration = (base_backoff * (2**attempt)) + random.uniform(0, 1)
+                    logger.warning(
+                        f"[{self.__class__.__name__}] Error: {str(e)}. "
+                        f"Retrying in {backoff_duration:.2f}s... (attempt {attempt + 1}/{max_retries})"
+                    )
+                    await asyncio.sleep(backoff_duration)
+                    continue
+                else:
+                    raise
+
+        return []
 
     async def _perform_asearch(self, query: str, limit: int) -> List[SearchResult]:
         """
@@ -120,147 +266,19 @@ class SearchTool:
         """
         raise NotImplementedError
 
-    async def _wait_for_rate_limit(self):
-        """
-        Enforce a minimum delay between requests for this tool class using a leaky bucket algorithm.
-        Ensures that requests are spaced out by at least `self.rate_limit_delay` seconds.
-        """
-        if self.rate_limit_delay <= 0:
-            return
-
-        state = self._state
-        
-        # Calculate how long to sleep OUTSIDE the lock
-        # We only need the lock to update the shared state
-        delay_needed = 0.0
-        
-        with state["lock"]:
-            if "last_request_time" not in state:
-                state["last_request_time"] = 0.0
-
-            now = time.time()
-            last_request_time = state["last_request_time"]
-            
-            # The next available slot is the later of:
-            # 1. The current time (if we've been idle long enough)
-            # 2. The previous request time + required delay
-            next_slot = max(now, last_request_time + self.rate_limit_delay)
-            
-            delay_needed = next_slot - now
-            
-            # Update state to reserve this slot
-            # IMPORTANT: We set last_request_time to next_slot, effectively "booking" it
-            state["last_request_time"] = next_slot
-
-        if delay_needed > 0:
-            logger.info(
-                f"[{self.__class__.__name__}] Rate limit active. Sleeping for {delay_needed:.2f}s..."
-            )
-            await asyncio.sleep(delay_needed)
-
-    async def _asearch_with_retry(
-        self, func: Callable, *args, **kwargs
-    ) -> List[SearchResult]:
-        """
-        Executes the search function with exponential backoff and rate limiting (async version).
-        """
-        retries = 3
-        base_backoff = 2.0
-
-        for i in range(retries + 1):
-            # 1. Check Rate Limit before making a request
-            await self._wait_for_rate_limit()
-
-            state = self._state
-            # Check shared state (still using thread lock as it might be shared with sync threads)
-            with state["lock"]:
-                wait_time = state["backoff_until"] - time.time()
-
-            if wait_time > 0:
-                sleep_duration = wait_time + random.uniform(0.1, 0.5)
-                logger.info(
-                    f"[{self.__class__.__name__}] Global backoff active. Sleeping {sleep_duration:.2f}s..."
-                )
-                await asyncio.sleep(sleep_duration)
-
-            try:
-                return await func(*args, **kwargs)
-            except asyncio.CancelledError:
-                logger.info(
-                    f"[{self.__class__.__name__}] Task cancelled. Exiting retry loop."
-                )
-                raise
-            except httpx.HTTPStatusError as e:
-                # Handle 429 Too Many Requests specifically
-                if e.response.status_code == 429:
-                    retry_after = e.response.headers.get("Retry-After")
-                    if retry_after:
-                        try:
-                            backoff_duration = float(retry_after) + 1.0
-                        except ValueError:
-                            backoff_duration = (base_backoff * (2**i)) + random.uniform(1, 3)
-                    else:
-                        backoff_duration = (base_backoff * (2**i)) + random.uniform(5, 10) # Aggressive backoff for 429
-                    
-                    logger.warning(
-                        f"[{self.__class__.__name__}] 429 Too Many Requests. Retrying in {backoff_duration:.2f}s..."
-                    )
-                else:
-                    backoff_duration = (base_backoff * (2**i)) + random.uniform(0, 1)
-                    logger.warning(
-                         f"[{self.__class__.__name__}] HTTP Error {e.response.status_code}: {str(e)}. Retrying in {backoff_duration:.2f}s..."
-                    )
-                
-                if i == retries:
-                     logger.error(
-                        f"[{self.__class__.__name__}] Failed after {retries} retries: {str(e)}"
-                    )
-                     return []
-
-                with state["lock"]:
-                    new_backoff_until = time.time() + backoff_duration
-                    if new_backoff_until > state["backoff_until"]:
-                        state["backoff_until"] = new_backoff_until
-                
-                await asyncio.sleep(backoff_duration)
-                continue
-
-            except Exception as e:
-                if i == retries:
-                    logger.error(
-                        f"[{self.__class__.__name__}] Failed after {retries} retries: {str(e)}"
-                    )
-                    return []
-
-                backoff_duration = (base_backoff * (2**i)) + random.uniform(0, 1)
-
-                with state["lock"]:
-                    new_backoff_until = time.time() + backoff_duration
-                    if new_backoff_until > state["backoff_until"]:
-                        state["backoff_until"] = new_backoff_until
-
-                logger.warning(
-                    f"[{self.__class__.__name__}] Error: {str(e)}. Retrying in {backoff_duration:.2f}s..."
-                )
-                await asyncio.sleep(backoff_duration)
-        return []
+    def get_stats(self) -> Dict[str, Any]:
+        """Get current queue and circuit breaker stats for monitoring."""
+        return self._queue.get_stats()
 
 
 class ArxivSearch(SearchTool):
     """Tool to search ArXiv for papers."""
-    
-    rate_limit_delay = ARXIV_RATE_LIMIT_DELAY
 
-    def __init__(self):
-        super().__init__()
-        # Ensure rate limit state has last_request_time
-        with self._state['lock']:
-            if 'last_request_time' not in self._state:
-                self._state['last_request_time'] = 0.0
+    token_bucket_rate = TOKEN_BUCKET_RATE_ARXIV
 
     async def _perform_asearch(self, query: str, limit: int) -> List[SearchResult]:
         """Async implementation of ArXiv search using httpx and XML parsing."""
-            
+
         logger.info(f"Searching ArXiv (Async) for: {query}")
         url = "https://export.arxiv.org/api/query"
         params = {
@@ -324,21 +342,17 @@ class ArxivSearch(SearchTool):
 class ScholarlySearch(SearchTool):
     """Tool to search Google Scholar using `scholarly` library (free)."""
 
-    rate_limit_delay = SCHOLAR_RATE_LIMIT_PERIOD
-
-    def _search_with_rate_limit(self, query: str):
-        logger.info(f"Searching Google Scholar for: {query}")
-        return scholarly.search_pubs(query)
+    token_bucket_rate = TOKEN_BUCKET_RATE_SCHOLAR
 
     async def _perform_asearch(self, query: str, limit: int) -> List[SearchResult]:
-        """Async wrapper for synchronous scholarly search."""
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, self._perform_search_sync, query, limit)
+        """Async wrapper for synchronous scholarly search with cancellation support."""
+        return await run_in_executor_cancellable(self._perform_search_sync, query, limit)
 
     def _perform_search_sync(
         self, query: str, limit: int = SCHOLAR_SEARCH_LIMIT
     ) -> List[SearchResult]:
-        search_query = self._search_with_rate_limit(query)
+        logger.info(f"Searching Google Scholar for: {query}")
+        search_query = scholarly.search_pubs(query)
         results = []
         for _ in range(limit):
             try:
@@ -366,15 +380,11 @@ class ScholarlySearch(SearchTool):
 class SemanticScholarSearch(SearchTool):
     """Tool to search Semantic Scholar."""
 
-    rate_limit_delay = SEMANTIC_SCHOLAR_RATE_LIMIT_DELAY
-
-    def __init__(self):
-        super().__init__()
-        self.sch = SemanticScholar(api_key=SEMANTIC_SCHOLAR_API_KEY, timeout=10)
+    token_bucket_rate = TOKEN_BUCKET_RATE_SEMANTIC_SCHOLAR
 
     async def _perform_asearch(self, query: str, limit: int) -> List[SearchResult]:
         """Async implementation of Semantic Scholar search using httpx."""
-        
+
         logger.info(f"Searching Semantic Scholar (Async) for: {query} (limit={limit})")
         url = "https://api.semanticscholar.org/graph/v1/paper/search"
         params = {
@@ -413,15 +423,7 @@ class SemanticScholarSearch(SearchTool):
 class OpenReviewSearch(SearchTool):
     """Tool to search OpenReview."""
 
-    def __init__(self):
-        super().__init__()
-        try:
-            self.client = openreview.api.OpenReviewClient(
-                baseurl="https://api2.openreview.net"
-            )
-        except Exception as e:
-            logger.warning(f"Failed to initialize OpenReview client: {e}")
-            self.client = None
+    token_bucket_rate = TOKEN_BUCKET_RATE_OPENREVIEW
 
     async def _perform_asearch(self, query: str, limit: int) -> List[SearchResult]:
         """Async implementation of OpenReview search using httpx."""
@@ -468,19 +470,8 @@ class OpenReviewSearch(SearchTool):
 class OpenAlexSearch(SearchTool):
     """Tool to search OpenAlex."""
 
-    # We override perform_search for sync (still using requests for backward compat if needed)
-    def _perform_search(
-        self, query: str, limit: int = OPENALEX_SEARCH_LIMIT
-    ) -> List[Dict]:
-        logger.info(f"Searching OpenAlex for: {query}")
-        url = "https://api.openalex.org/works"
-        params = {"search": query, "per_page": limit}
-        headers = {"User-Agent": "ValiRef/1.0 (mailto:your_email@example.com)"}
-        response = httpx.get(url, params=params, headers=headers, timeout=10)
-        response.raise_for_status()
-        return self._parse_openalex_response(response.json())
+    token_bucket_rate = TOKEN_BUCKET_RATE_OPENALEX
 
-    # We override perform_asearch for native async using httpx
     async def _perform_asearch(self, query: str, limit: int) -> List[SearchResult]:
         logger.info(f"Searching OpenAlex (Async) for: {query}")
         url = "https://api.openalex.org/works"
@@ -524,10 +515,11 @@ class OpenAlexSearch(SearchTool):
 class DuckDuckGoSearch(SearchTool):
     """Tool to search the web using DuckDuckGo."""
 
+    token_bucket_rate = TOKEN_BUCKET_RATE_DUCKDUCKGO
+
     async def _perform_asearch(self, query: str, limit: int) -> List[SearchResult]:
-        """Async wrapper for synchronous DuckDuckGo search."""
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, self._perform_search_sync, query, limit)
+        """Async wrapper for synchronous DuckDuckGo search with cancellation support."""
+        return await run_in_executor_cancellable(self._perform_search_sync, query, limit)
 
     def _perform_search_sync(
         self, query: str, limit: int = DUCKDUCKGO_SEARCH_LIMIT
@@ -591,7 +583,13 @@ class AggregateSearch:
         tasks: List[asyncio.Task[List[SearchResult]]] = []
         for source in valid_sources:
             tool = self.tools[source]
-            tasks.append(asyncio.create_task(tool.asearch(query, limit=limit)))
+            # Add timeout control per source to avoid slow sources blocking
+            async def search_with_timeout(tool=tool, query=query, limit=limit):
+                return await asyncio.wait_for(
+                    tool.asearch(query, limit=limit),
+                    timeout=8.0  # 8 second timeout per source
+                )
+            tasks.append(asyncio.create_task(search_with_timeout()))
 
         results_list: List[Union[List[SearchResult], Exception]] = await asyncio.gather(
             *tasks, return_exceptions=True
@@ -602,7 +600,10 @@ class AggregateSearch:
 
         for i, result in enumerate(results_list):
             source_name = valid_sources[i]
-            if isinstance(result, Exception):
+            if isinstance(result, asyncio.TimeoutError):
+                logger.warning(f"Timeout searching {source_name}")
+                failed_sources.append(source_name)
+            elif isinstance(result, Exception):
                 logger.error(f"Error searching {source_name}: {result}")
                 failed_sources.append(source_name)
             elif result:
@@ -618,16 +619,16 @@ class AggregateSearch:
             title_norm = item.title.lower().strip()
             if title_norm and title_norm not in seen_titles:
                 seen_titles.add(title_norm)
-                
+
                 # Prune attributes to limit context length
-                if len(item.title) > 200:
-                    item.title = item.title[:200] + "..."
-                if len(item.abstract) > 500:
-                    item.abstract = item.abstract[:500] + "..."
-                if len(item.authors) > 15:
-                    item.authors = item.authors[:15]
+                if len(item.title) > 150:
+                    item.title = item.title[:150] + "..."
+                if len(item.abstract) > 300:
+                    item.abstract = item.abstract[:300] + "..."
+                if len(item.authors) > 10:
+                    item.authors = item.authors[:10]
                     item.authors.append("et al.")
-                
+
                 unique_results.append(item)
 
         # Add markers for failed sources so the model knows which sources didn't return data

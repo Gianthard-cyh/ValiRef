@@ -1,6 +1,7 @@
 import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
+import time
 from typing import List
 from rich.progress import (
     Progress,
@@ -11,6 +12,7 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 from ..core.logger import logger
+from ..core.config import TOKEN_BUCKET_RATE_ARXIV
 from .schema import Paper
 
 
@@ -23,6 +25,9 @@ class PaperCrawler:
 
     def __init__(self, source: str = "arxiv"):
         self.source = source.lower()
+        self._last_request_time = 0.0
+        # Use same rate limit as search tools: interval = 1/rate
+        self._rate_limit_delay = 1.0 / TOKEN_BUCKET_RATE_ARXIV
 
     def fetch_seeds(self, topic: str = "cs.AI", count: int = 10) -> List[Paper]:
         """
@@ -78,6 +83,13 @@ class PaperCrawler:
         从 arXiv API 获取数据。
         API 文档: https://arxiv.org/help/api/user-manual
         """
+        # Rate limiting - ensure minimum delay between requests
+        elapsed = time.time() - self._last_request_time
+        if elapsed < self._rate_limit_delay:
+            sleep_time = self._rate_limit_delay - elapsed
+            logger.debug(f"Rate limiting: sleeping {sleep_time:.2f}s")
+            time.sleep(sleep_time)
+
         # 构建查询参数
         # 如果 query 没有前缀，默认搜索所有字段
         search_query = f"all:{query}" if ":" not in query else query
@@ -96,6 +108,7 @@ class PaperCrawler:
         logger.info(f"Querying arXiv API: {url}")
 
         try:
+            self._last_request_time = time.time()
             with urllib.request.urlopen(url) as response:
                 xml_data = response.read().decode("utf-8")
 
