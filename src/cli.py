@@ -5,8 +5,23 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 from rich import box
+from rich.table import Table
+from langchain_deepseek import ChatDeepSeek
+
 from src.core.pipeline import ValidationPipeline
 from src.core.detector import HallucinationDetector
+from src.core.extract import PDFExtractor, TextExtractor
+from src.core.tools import AggregateSearch
+from src.core.config import (
+    DEEPSEEK_API_KEY,
+    LLM_MODEL,
+    LLM_TEMPERATURE,
+    DETECTOR_TEMPERATURE,
+    LLM_MAX_TOKENS,
+    LLM_TIMEOUT,
+    LLM_MAX_RETRIES,
+)
+from src.core.search_cache import get_cache, clear_cache
 from src.bench import BenchmarkRunner
 from src.cli_callbacks import CliCallback
 import logging
@@ -19,6 +34,44 @@ app = typer.Typer(
     add_completion=False,
 )
 console = Console()
+
+
+def create_llm(temperature: Optional[float] = None) -> ChatDeepSeek:
+    """Factory function to create a ChatDeepSeek LLM instance."""
+    if DEEPSEEK_API_KEY is None:
+        raise ValueError("DEEPSEEK_API_KEY is not set")
+
+    return ChatDeepSeek(
+        model=LLM_MODEL,
+        temperature=temperature if temperature is not None else LLM_TEMPERATURE,
+        max_tokens=LLM_MAX_TOKENS,
+        timeout=LLM_TIMEOUT,
+        max_retries=LLM_MAX_RETRIES,
+        api_key=DEEPSEEK_API_KEY,
+    )
+
+
+def create_detector(llm: Optional[ChatDeepSeek] = None) -> HallucinationDetector:
+    """Factory function to create a HallucinationDetector with all dependencies."""
+    llm_instance = llm if llm is not None else create_llm(temperature=DETECTOR_TEMPERATURE)
+    search = AggregateSearch()
+    return HallucinationDetector(llm=llm_instance, search=search)
+
+
+def create_pipeline(
+    callbacks: Optional[list] = None,
+) -> ValidationPipeline:
+    """Factory function to create a ValidationPipeline with all dependencies."""
+    llm = create_llm()
+    text_extractor = TextExtractor(llm=llm)
+    pdf_extractor = PDFExtractor(text_extractor=text_extractor)
+    detector = create_detector()
+
+    return ValidationPipeline(
+        extractor=pdf_extractor,
+        detector=detector,
+        callbacks=callbacks or [],
+    )
 
 
 @app.command()
@@ -59,7 +112,7 @@ def validate(
 
     async def run_pipeline():
         callback = CliCallback(console, show_metrics=show_metrics) if not verbose else None
-        pipeline = ValidationPipeline(
+        pipeline = create_pipeline(
             callbacks=[callback] if callback else []
         )
         if verbose:
@@ -213,14 +266,19 @@ def benchmark(
         )
         raise typer.Exit(code=1)
 
-    # Adjust logging level
+    # Adjust logging level based on verbose flag
     if not verbose:
-        logging.getLogger("valiref").setLevel(logging.WARNING)
-        logging.getLogger("httpx").setLevel(logging.WARNING)
-        logging.getLogger("httpcore").setLevel(logging.WARNING)
+        # Suppress all logs in non-verbose mode to keep the progress bar clean
+        logging.getLogger("valiref").setLevel(logging.CRITICAL)
+        logging.getLogger("httpx").setLevel(logging.CRITICAL)
+        logging.getLogger("httpcore").setLevel(logging.CRITICAL)
+        logging.getLogger().setLevel(logging.CRITICAL)
+    else:
+        logging.getLogger("valiref").setLevel(logging.INFO)
+        logging.getLogger().setLevel(logging.INFO)
 
     async def run_benchmark():
-        detector = HallucinationDetector()
+        detector = create_detector()
         runner = BenchmarkRunner(detector)
 
         if verbose:
@@ -239,7 +297,7 @@ def benchmark(
         result = asyncio.run(run_benchmark())
 
         # Print results
-        runner = BenchmarkRunner(HallucinationDetector())
+        runner = BenchmarkRunner(create_detector())
         runner.print_results(result)
 
         # Save to file if output specified
@@ -254,6 +312,51 @@ def benchmark(
         raise typer.Exit(code=1)
     except Exception as e:
         console.print(f"[bold red]Benchmark failed:[/bold red] {str(e)}")
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def cache(
+    action: str = typer.Argument(..., help="Action to perform: 'clear', 'stats', or 'show'"),
+):
+    """
+    Manage search result cache.
+
+    Actions:
+        clear: Remove all cached search results
+        stats: Show cache statistics
+        show: Display cache file location
+    """
+    cache_instance = get_cache()
+
+    if action == "clear":
+        clear_cache()
+        console.print("[green]Search cache cleared successfully.[/green]")
+
+    elif action == "stats":
+        stats = cache_instance.get_stats()
+        table = Table(title="Cache Statistics", box=box.ROUNDED)
+        table.add_column("Metric", style="cyan")
+        table.add_column("Value", justify="right", style="green")
+
+        table.add_row("Total Entries", str(stats["total_entries"]))
+        table.add_row("Valid Entries", str(stats["valid_entries"]))
+        table.add_row("Expired Entries", str(stats["expired_entries"]))
+
+        console.print(table)
+
+    elif action == "show":
+        cache_file = cache_instance.cache_file
+        console.print(f"[bold]Cache location:[/bold] {cache_file}")
+        if cache_file.exists():
+            size = cache_file.stat().st_size
+            console.print(f"[bold]Cache size:[/bold] {size:,} bytes")
+        else:
+            console.print("[yellow]Cache file does not exist yet.[/yellow]")
+
+    else:
+        console.print(f"[bold red]Unknown action:[/bold red] {action}")
+        console.print("Valid actions: clear, stats, show")
         raise typer.Exit(code=1)
 
 

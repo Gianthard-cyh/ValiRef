@@ -1,5 +1,5 @@
 import asyncio
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel, Field
 from langchain_deepseek import ChatDeepSeek
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -36,21 +36,28 @@ class ValidationResult(BaseModel):
 
 
 class HallucinationDetector:
-    def __init__(self):
-        if DEEPSEEK_API_KEY is None:
-            raise ValueError("DEEPSEEK_API_KEY is not set")
+    def __init__(
+        self,
+        llm: Optional[ChatDeepSeek] = None,
+        search: Optional[AggregateSearch] = None,
+    ):
+        if llm is not None:
+            self.llm = llm
+        else:
+            if DEEPSEEK_API_KEY is None:
+                raise ValueError("DEEPSEEK_API_KEY is not set")
 
-        self.llm = ChatDeepSeek(
-            model=LLM_MODEL,
-            temperature=DETECTOR_TEMPERATURE,
-            max_tokens=LLM_MAX_TOKENS,
-            timeout=LLM_TIMEOUT,
-            max_retries=LLM_MAX_RETRIES,
-            api_key=DEEPSEEK_API_KEY,
-        )
+            self.llm = ChatDeepSeek(
+                model=LLM_MODEL,
+                temperature=DETECTOR_TEMPERATURE,
+                max_tokens=LLM_MAX_TOKENS,
+                timeout=LLM_TIMEOUT,
+                max_retries=LLM_MAX_RETRIES,
+                api_key=DEEPSEEK_API_KEY,
+            )
 
-        # Initialize Aggregate Search Tool
-        self.aggregate_search_instance = AggregateSearch()
+        # Initialize Aggregate Search Tool (injected or default)
+        self.aggregate_search_instance = search if search is not None else AggregateSearch()
 
         self.tools = self._get_tools()
         self.agent_executor = create_agent(self.llm, self.tools)
@@ -97,18 +104,23 @@ class HallucinationDetector:
     def _get_system_prompt(self) -> str:
         return (
             "You are a scientific fact-checker. Your task is to verify if a given reference is a REAL publication.\n"
-            "You have access to an `aggregate_search` tool that can query multiple sources at once.\n"
-            "Steps:\n"
-            "1. Search for the paper using its title. Use `aggregate_search` with sources like ['arxiv', 'openalex'].\n"
-            "2. If not found, try adding 'openreview' or 'duckduckgo' to the sources list.\n"
-            "3. Verify if the Title, Authors, and Date match the query.\n"
-            "4. Be careful about Attribution Errors (real title but wrong authors).\n"
-            "5. Use less than 5 rounds of conversation.\n"
-            "6. Once you gathered enough information have a conclusion, YOU MUST CALL the `submit_validation_result` tool to submit your findings.\n"
-            "   - is_hallucination: True if it's fake or attribution error, False if real.\n"
-            "   - confidence: 0.0 to 1.0\n"
-            "   - reasoning: Brief explanation.\n"
-            "   - evidence: List of URLs that support your judgment. If URL is not available, provide the source name."
+            "You have access to an `aggregate_search` tool that can query multiple sources concurrently.\n"
+            "\n"
+            "Available sources and when to use them:\n"
+            "- 'openalex': PRIMARY source for all academic papers - broad coverage, no rate limits, always start with this\n"
+            "- 'openreview': For ICLR/NeurIPS/ICML/ACL conference papers, or when venue suggests these conferences\n"
+            "- 'arxiv': ONLY when the reference explicitly mentions an arXiv ID or 'arXiv' in the venue/title\n"
+            "- 'duckduckgo': Fallback when academic sources return no results\n"
+            "\n"
+            "Search strategy:\n"
+            "1. Use the paper title as the search query (direct paste works best)\n"
+            "2. Select sources based on the reference context:\n"
+            "   - General paper / unknown venue → ['openalex']\n"
+            "   - ML/AI conference paper → ['openalex', 'openreview']\n"
+            "   - Has arXiv ID → add 'arxiv'\n"
+            "3. If no results, try broader search (remove subtitle after colon, or use first 5-6 words)\n"
+            "4. Verify Title, Authors, and Date match. Watch for Attribution Errors\n"
+            "5. Once you have enough evidence, YOU MUST CALL `submit_validation_result`\n"
         )
 
     def _parse_agent_response(self, response: dict) -> ValidationResult:

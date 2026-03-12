@@ -15,10 +15,15 @@ class ValidationPipeline:
     Pipeline for extracting references from a PDF and validating them against external sources.
     """
 
-    def __init__(self, callbacks: Optional[List[ValidationCallback]] = None):
+    def __init__(
+        self,
+        extractor: Optional[PDFExtractor] = None,
+        detector: Optional[HallucinationDetector] = None,
+        callbacks: Optional[List[ValidationCallback]] = None,
+    ):
         logger.info("Initializing ValidationPipeline...")
-        self.extractor = PDFExtractor()
-        self.detector = HallucinationDetector()
+        self.extractor = extractor if extractor is not None else PDFExtractor()
+        self.detector = detector if detector is not None else HallucinationDetector()
         self.callbacks = callbacks or []
 
     async def process_pdf(self, pdf_path: str, max_workers: int = 10) -> Dict[str, Any]:

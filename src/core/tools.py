@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from scholarly import scholarly
 from semanticscholar import SemanticScholar
 
+from .search_cache import get_cache
 from .config import (
     CIRCUIT_BREAKER_FAILURE_THRESHOLD,
     CIRCUIT_BREAKER_HALF_OPEN_CALLS,
@@ -124,7 +125,7 @@ class SearchTool:
 
     async def asearch(self, query: str, limit: int = 5) -> List[SearchResult]:
         """
-        Asynchronous search method with queue-based rate limiting and monitoring.
+        Asynchronous search method with caching, rate limiting and monitoring.
 
         Args:
             query: The search query
@@ -134,6 +135,14 @@ class SearchTool:
             List of SearchResult objects
         """
         tool_name = self.__class__.__name__
+
+        # Check cache first
+        cache = get_cache()
+        cached_data = cache.get(tool_name, query, limit)
+        if cached_data is not None:
+            logger.info(f"[{tool_name}] Cache hit for: {query[:50]}...")
+            return [SearchResult(**item) for item in cached_data]
+
         start_time = datetime.now()
 
         # Publish start signal
@@ -153,10 +162,22 @@ class SearchTool:
         try:
             # Execute with rate limiting and circuit breaker
             result = await self._queue.execute(task, self._execute_search_task)
+
+            # Cache successful results
+            if result:
+                cache.set(tool_name, query, limit, [r.model_dump() for r in result])
+
             self._emit_end_signal(tool_name, query, start_time, True, len(result))
             return result
 
         except CircuitBreakerOpen:
+            # Try to return cached result even if circuit is open
+            cached_data = cache.get(tool_name, query, limit)
+            if cached_data is not None:
+                logger.info(f"[{tool_name}] Circuit open, using cached result for: {query[:50]}...")
+                self._emit_end_signal(tool_name, query, start_time, True, len(cached_data), "CircuitBreakerOpen_CacheHit")
+                return [SearchResult(**item) for item in cached_data]
+
             logger.warning(f"[{tool_name}] Circuit breaker is OPEN - failing fast")
             self._emit_end_signal(tool_name, query, start_time, False, 0, "CircuitBreakerOpen")
             return []

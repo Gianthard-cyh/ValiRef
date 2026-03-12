@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List
+from typing import List, Optional
 import fitz  # pymupdf
 from langchain_deepseek import ChatDeepSeek
 from langchain_core.prompts import ChatPromptTemplate
@@ -42,18 +42,21 @@ class Extractor(ABC):
 
 
 class TextExtractor(Extractor):
-    def __init__(self):
-        if DEEPSEEK_API_KEY is None:
-            raise ValueError("DEEPSEEK_API_KEY is not set")
+    def __init__(self, llm: Optional[ChatDeepSeek] = None):
+        if llm is not None:
+            self.model = llm
+        else:
+            if DEEPSEEK_API_KEY is None:
+                raise ValueError("DEEPSEEK_API_KEY is not set")
 
-        self.model = ChatDeepSeek(
-            model=LLM_MODEL,
-            temperature=LLM_TEMPERATURE,
-            max_tokens=LLM_MAX_TOKENS,
-            timeout=LLM_TIMEOUT,
-            max_retries=LLM_MAX_RETRIES,
-            api_key=DEEPSEEK_API_KEY,
-        )
+            self.model = ChatDeepSeek(
+                model=LLM_MODEL,
+                temperature=LLM_TEMPERATURE,
+                max_tokens=LLM_MAX_TOKENS,
+                timeout=LLM_TIMEOUT,
+                max_retries=LLM_MAX_RETRIES,
+                api_key=DEEPSEEK_API_KEY,
+            )
 
     async def extract(self, text: str) -> List[Paper]:
         """
@@ -144,8 +147,8 @@ class TextExtractor(Extractor):
 
 
 class PDFExtractor(Extractor):
-    def __init__(self):
-        self.text_extractor = TextExtractor()
+    def __init__(self, text_extractor: Optional[TextExtractor] = None):
+        self.text_extractor = text_extractor if text_extractor is not None else TextExtractor()
 
     async def extract(self, file_path: str) -> List[Paper]:
         """
