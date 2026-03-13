@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: valiref-pgvector
+    environment:
+      POSTGRES_USER: valiref
+      POSTGRES_PASSWORD: valiref_secret
+      POSTGRES_DB: arxiv_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # 内存限制（4GB服务器适配）
+    deploy:
+      resources:
+        limits:
+          memory: 1.5G
+        reservations:
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U valiref -d arxiv_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+    driver: local

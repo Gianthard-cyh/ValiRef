@@ -22,6 +22,7 @@ classifiers = [
 ]
 dependencies = [
     "arxiv>=2.4.0",
+    "asyncpg>=0.29.0",
     "blinker>=1.9.0",
     "ddgs>=9.10.0",
     "google-search-results>=2.4.2",
@@ -30,13 +31,16 @@ dependencies = [
     "langchain-deepseek>=1.0.1",
     "langgraph>=1.0.8",
     "openreview-py>=1.57.0",
+    "psycopg2-binary>=2.9.11",
     "pymupdf>=1.27.1",
     "python-dotenv>=1.2.1",
     "ratelimit>=2.2.1",
     "rich>=14.3.2",
     "scholarly>=1.7.11",
     "semanticscholar>=0.11.0",
+    "sentence-transformers>=2.2.0",
     "socksio>=1.0.0",
+    "tqdm>=4.66.0",
     "typer>=0.9.0",
 ]
 
