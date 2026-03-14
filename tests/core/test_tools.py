@@ -1,7 +1,6 @@
 import pytest
 import asyncio
 from unittest.mock import MagicMock, patch, AsyncMock
-from datetime import datetime
 from src.core.tools import ArxivSearch, OpenReviewSearch, OpenAlexSearch, SearchTool
 
 
@@ -15,6 +14,7 @@ class TestSearchTools:
         """
         Test ArxivSearch tool with async httpx.
         """
+
         async def run_test():
             # Setup mock response
             mock_response = MagicMock()
@@ -57,6 +57,7 @@ class TestSearchTools:
         """
         Test ArxivSearch failure handling.
         """
+
         async def run_test():
             # Simulate an exception
             mock_client = AsyncMock()
@@ -78,6 +79,7 @@ class TestSearchTools:
         """
         Test OpenReviewSearch tool with async httpx.
         """
+
         async def run_test():
             # Setup mock response
             mock_response = MagicMock()
@@ -91,7 +93,7 @@ class TestSearchTools:
                             "title": {"value": "OpenReview Paper"},
                             "authors": {"value": ["Author One", "Author Two"]},
                             "abstract": {"value": "Abstract content"},
-                        }
+                        },
                     }
                 ]
             }
@@ -119,6 +121,7 @@ class TestSearchTools:
         """
         Test OpenAlexSearch tool with async httpx.
         """
+
         async def run_test():
             # Setup mock response
             mock_response = MagicMock()
@@ -166,6 +169,7 @@ class TestSearchTools:
         """
         Test OpenAlexSearch failure handling.
         """
+
         async def run_test():
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)

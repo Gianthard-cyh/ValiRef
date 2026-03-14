@@ -148,7 +148,9 @@ class TextExtractor(Extractor):
 
 class PDFExtractor(Extractor):
     def __init__(self, text_extractor: Optional[TextExtractor] = None):
-        self.text_extractor = text_extractor if text_extractor is not None else TextExtractor()
+        self.text_extractor = (
+            text_extractor if text_extractor is not None else TextExtractor()
+        )
 
     async def extract(self, file_path: str) -> List[Paper]:
         """

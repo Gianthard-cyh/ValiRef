@@ -1,9 +1,9 @@
 """
 Unit tests for src.core.pipeline module with dependency injection.
 """
+
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
-from pathlib import Path
 
 from src.core.pipeline import ValidationPipeline
 from src.bench.schema import Paper
@@ -30,9 +30,10 @@ class TestValidationPipeline:
 
     def test_constructor_creates_default_dependencies(self):
         """Test pipeline creates default dependencies when not provided."""
-        with patch("src.core.pipeline.PDFExtractor") as mock_extractor_cls, \
-             patch("src.core.pipeline.HallucinationDetector") as mock_detector_cls:
-
+        with (
+            patch("src.core.pipeline.PDFExtractor") as mock_extractor_cls,
+            patch("src.core.pipeline.HallucinationDetector") as mock_detector_cls,
+        ):
             mock_extractor = MagicMock()
             mock_detector = MagicMock()
             mock_extractor_cls.return_value = mock_extractor
@@ -67,7 +68,7 @@ class TestValidationPipeline:
 
         mock_validation_result = MagicMock()
         mock_validation_result.model_dump.return_value = {
-            "is_hallucination": False,
+            "hallucination_type": "Real",
             "confidence": 0.95,
             "reasoning": "Found in OpenAlex",
             "evidence": ["http://example.com"],
@@ -117,7 +118,7 @@ class TestValidationPipeline:
 
         mock_validation_result = MagicMock()
         mock_validation_result.model_dump.return_value = {
-            "is_hallucination": False,
+            "hallucination_type": "Real",
             "confidence": 0.95,
             "reasoning": "Found",
             "evidence": [],
@@ -208,7 +209,9 @@ class TestValidationPipeline:
         mock_extractor.extract = AsyncMock(return_value=[mock_paper])
 
         mock_detector = MagicMock()
-        mock_detector.check_reference = AsyncMock(side_effect=Exception("Validation failed"))
+        mock_detector.check_reference = AsyncMock(
+            side_effect=Exception("Validation failed")
+        )
 
         mock_callback = MagicMock()
 
@@ -238,6 +241,7 @@ class TestValidationPipeline:
         with pytest.raises(FileNotFoundError):
             # asyncio.run to handle the async nature
             import asyncio
+
             asyncio.run(pipeline.process_pdf("/nonexistent/file.pdf"))
 
     @pytest.mark.asyncio
@@ -264,7 +268,7 @@ class TestValidationPipeline:
 
         mock_validation_result = MagicMock()
         mock_validation_result.model_dump.return_value = {
-            "is_hallucination": False,
+            "hallucination_type": "Real",
             "confidence": 0.9,
             "reasoning": "Found",
             "evidence": [],

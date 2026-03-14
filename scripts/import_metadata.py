@@ -1,207 +1,153 @@
 #!/usr/bin/env python3
 """
-arXiv 元数据导入脚本（小批量测试版）
-支持加速：多进程并行、批处理、流式读取
+Minimal arXiv metadata importer.
+Imports arXiv metadata from local file to PostgreSQL.
 """
 
-import json
-import asyncio
-import asyncpg
-from pathlib import Path
-from datetime import datetime
-from typing import Iterator
-from tqdm import tqdm
-import multiprocessing as mp
-from functools import partial
 import os
+import json
+import gzip
+from tqdm import tqdm
+import psycopg2
+from psycopg2.extras import execute_values
 
-# 配置
-BATCH_SIZE = 500  # 每批导入数量
-MAX_PAPERS = 10000  # 小批量测试：只导入1万条
-JSONL_PATH = Path("/home/cyh/下载/arxiv-metadata-oai-snapshot.json")
-
-# PostgreSQL连接配置
 DB_CONFIG = {
-    "host": "localhost",
-    "port": 5432,
-    "user": "valiref",
-    "password": "valiref_secret",
-    "database": "arxiv_db",
-    "ssl": False
+    "host": os.getenv("DB_HOST", "127.0.0.1"),
+    "port": int(os.getenv("DB_PORT", "5432")),
+    "user": os.getenv("DB_USER", "valiref"),
+    "password": os.getenv("DB_PASSWORD", "valiref_secret"),
+    "database": os.getenv("DB_NAME", "arxiv_db"),
 }
 
 
-def parse_paper_line(line: str) -> dict | None:
-    """解析单行JSONL数据"""
-    try:
-        data = json.loads(line)
-
-        # 提取年份（从versions或update_date）
-        year = None
-        if data.get("versions"):
-            # 从第一个版本的created字段提取
-            created = data["versions"][0].get("created", "")
-            # 格式: "Mon, 2 Apr 2007 19:18:42 GMT"
-            try:
-                year = int(created.split()[-3]) if len(created.split()) > 3 else None
-            except (ValueError, IndexError):
-                pass
-
-        if year is None and data.get("update_date"):
-            # 从update_date提取: "2008-11-26"
-            try:
-                year = int(data["update_date"].split("-")[0])
-            except (ValueError, IndexError):
-                pass
-
-        # 解析categories
-        categories = data.get("categories", "").split()
-
-        # 解析authors_parsed
-        authors = []
-        if data.get("authors_parsed"):
-            for author in data["authors_parsed"]:
-                if isinstance(author, list) and len(author) >= 2:
-                    name = f"{author[1]} {author[0]}"  # 名 + 姓
-                    authors.append(name.strip())
-
-        return {
-            "id": data.get("id"),
-            "title": data.get("title", "").strip(),
-            "authors": authors,
-            "abstract": data.get("abstract", "").strip(),
-            "categories": categories,
-            "year": year,
-            "doi": data.get("doi"),
-            "journal_ref": data.get("journal-ref")
-        }
-    except json.JSONDecodeError:
-        return None
-
-
-def stream_papers(jsonl_path: Path, max_papers: int = None) -> Iterator[dict]:
-    """流式读取JSONL文件"""
+def parse_metadata(filepath: str, limit: int = None):
+    """Parse arXiv metadata JSON and yield paper records."""
     count = 0
-    with open(jsonl_path, 'r', encoding='utf-8') as f:
+
+    # Detect if gzipped
+    open_func = gzip.open if filepath.endswith(".gz") else open
+
+    with open_func(filepath, "rt", encoding="utf-8") as f:
         for line in f:
-            if max_papers and count >= max_papers:
+            if limit and count >= limit:
                 break
-            paper = parse_paper_line(line)
-            if paper and paper["id"]:
-                yield paper
-                count += 1
+
+            data = json.loads(line)
+
+            # Extract fields (handle different schema)
+            paper_id = data.get("id", "")
+            title = data.get("title", "").replace("\n", " ").strip()
+            abstract = data.get("abstract", "").replace("\n", " ").strip()
+
+            # Parse authors - can be string (comma-separated) or list
+            authors_raw = data.get("authors", "")
+            if isinstance(authors_raw, str):
+                # Split by comma and clean up
+                authors = [a.strip() for a in authors_raw.split(",") if a.strip()]
+            elif isinstance(authors_raw, list):
+                authors = []
+                for a in authors_raw:
+                    if isinstance(a, dict):
+                        authors.append(a.get("name", ""))
+                    else:
+                        authors.append(str(a))
+            else:
+                authors = []
+
+            # Parse categories
+            categories = data.get("categories", [])
+            if isinstance(categories, str):
+                categories = categories.split()
+
+            # Parse year from various date fields
+            year = None
+            date = (
+                data.get("date") or data.get("created") or data.get("update_date", "")
+            )
+            if date and len(date) >= 4:
+                try:
+                    year = int(date[:4])
+                except ValueError:
+                    pass
+
+            doi = data.get("doi", "")
+            journal = data.get("journal-ref", "")
+
+            yield (paper_id, title, authors, abstract, categories, year, doi, journal)
+            count += 1
 
 
-async def import_batch(conn: asyncpg.Connection, papers: list[dict]):
-    """批量导入一批论文（不含embedding）"""
-    query = """
-        INSERT INTO papers (id, title, authors, abstract, categories, year, doi, journal_ref)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        ON CONFLICT (id) DO NOTHING
-    """
+def import_metadata(filepath: str, limit: int = None):
+    """Import arXiv metadata to PostgreSQL."""
+    print("🚀 Importing arXiv metadata")
+    print(f"   File: {filepath}")
 
-    values = [
-        (
-            p["id"],
-            p["title"],
-            p["authors"],
-            p["abstract"],
-            p["categories"],
-            p["year"],
-            p["doi"],
-            p["journal_ref"]
-        )
-        for p in papers
-    ]
-
-    await conn.executemany(query, values)
-
-
-async def import_metadata_only():
-    """只导入元数据（不含embedding），用于快速测试"""
-    print("🚀 开始导入元数据（不含embedding）...")
-    print(f"   目标: {MAX_PAPERS:,} 条记录")
-    print(f"   批次: {BATCH_SIZE} 条/批")
-
-    conn = await asyncpg.connect(**DB_CONFIG)
+    # Connect to DB
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
 
     try:
+        # Check existing count
+        cursor.execute("SELECT COUNT(*) FROM papers")
+        existing = cursor.fetchone()[0]
+        print(f"📊 Existing papers: {existing:,}")
+
+        # Parse and import
+        print("📥 Importing...")
         batch = []
         imported = 0
 
-        with tqdm(total=MAX_PAPERS, desc="导入进度") as pbar:
-            for paper in stream_papers(JSONL_PATH, MAX_PAPERS):
-                batch.append(paper)
+        for record in tqdm(
+            parse_metadata(filepath, limit), desc="Importing", unit="papers"
+        ):
+            batch.append(record)
 
-                if len(batch) >= BATCH_SIZE:
-                    await import_batch(conn, batch)
-                    imported += len(batch)
-                    pbar.update(len(batch))
-                    batch = []
-
-            # 导入最后一批
-            if batch:
-                await import_batch(conn, batch)
+            if len(batch) >= 1000:
+                execute_values(
+                    cursor,
+                    """
+                    INSERT INTO papers (id, title, authors, abstract, categories, year, doi, journal_ref)
+                    VALUES %s ON CONFLICT (id) DO NOTHING
+                    """,
+                    batch,
+                    page_size=len(batch),
+                )
+                conn.commit()
                 imported += len(batch)
-                pbar.update(len(batch))
+                batch = []
 
-        print(f"\n✅ 完成！成功导入 {imported:,} 条记录")
+        # Final batch
+        if batch:
+            execute_values(
+                cursor,
+                """
+                INSERT INTO papers (id, title, authors, abstract, categories, year, doi, journal_ref)
+                VALUES %s ON CONFLICT (id) DO NOTHING
+                """,
+                batch,
+                page_size=len(batch),
+            )
+            conn.commit()
+            imported += len(batch)
 
-        # 统计
-        count = await conn.fetchval("SELECT COUNT(*) FROM papers")
-        print(f"   数据库当前总计: {count:,} 条")
+        print(f"\n✅ Imported: {imported:,} papers")
 
     finally:
-        await conn.close()
-
-
-async def add_embedding_column():
-    """添加embedding列（如果不存在）"""
-    conn = await asyncpg.connect(**DB_CONFIG)
-    try:
-        await conn.execute("""
-            ALTER TABLE papers ADD COLUMN IF NOT EXISTS embedding VECTOR(384)
-        """)
-        print("✅ embedding列已添加")
-    finally:
-        await conn.close()
-
-
-async def create_vector_index():
-    """创建IVFFlat向量索引"""
-    print("🔧 创建IVFFlat向量索引（可能需要几分钟）...")
-    conn = await asyncpg.connect(**DB_CONFIG)
-    try:
-        await conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_papers_embedding
-            ON papers USING ivfflat (embedding vector_cosine_ops)
-            WITH (lists = 50)
-        """)
-        print("✅ 向量索引创建完成")
-    finally:
-        await conn.close()
+        cursor.close()
+        conn.close()
 
 
 def main():
-    """主函数"""
-    print("=" * 50)
-    print("arXiv 元数据导入工具（小批量测试版）")
-    print("=" * 50)
+    import argparse
 
-    # 检查文件
-    if not JSONL_PATH.exists():
-        print(f"❌ 错误: 找不到文件 {JSONL_PATH}")
-        return
+    parser = argparse.ArgumentParser(description="Import arXiv metadata")
+    parser.add_argument("filepath", help="Path to arXiv metadata JSON file")
+    parser.add_argument(
+        "-l", "--limit", type=int, default=None, help="Max papers to import"
+    )
+    args = parser.parse_args()
 
-    file_size = JSONL_PATH.stat().st_size / (1024**3)
-    print(f"📁 数据文件: {JSONL_PATH.name} ({file_size:.2f} GB)")
-
-    # 运行导入
-    asyncio.run(import_metadata_only())
-
-    print("\n📌 下一步:")
-    print("   1. 运行 generate_embeddings.py 生成向量")
-    print("   2. 运行 create_vector_index() 创建索引")
+    import_metadata(args.filepath, args.limit)
 
 
 if __name__ == "__main__":

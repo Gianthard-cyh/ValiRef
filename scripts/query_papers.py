@@ -1,234 +1,154 @@
 #!/usr/bin/env python3
 """
-arXiv 论文相似度查询示例
+Paper similarity search using pgvector.
+Note: Only arXiv papers have embeddings (DBLP papers have NULL embeddings).
 """
 
-import asyncio
-import asyncpg
+import os
+import psycopg2
 from sentence_transformers import SentenceTransformer
-
-DB_CONFIG = {
-    "host": "127.0.0.1",
-    "port": 5432,
-    "user": "valiref",
-    "password": "valiref_secret",
-    "database": "arxiv_db"
-}
 
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 
+DB_CONFIG = {
+    "host": os.getenv("DB_HOST", "127.0.0.1"),
+    "port": int(os.getenv("DB_PORT", "5432")),
+    "user": os.getenv("DB_USER", "valiref"),
+    "password": os.getenv("DB_PASSWORD", "valiref_secret"),
+    "database": os.getenv("DB_NAME", "arxiv_db"),
+}
 
-async def search_similar_papers(
-    query: str,
-    top_k: int = 10,
-    category_filter: str = None,
-    year_from: int = None
+
+def search_similar(
+    query: str, top_k: int = 10, source: str = None, year_from: int = None
 ):
     """
-    搜索相似论文
+    Search for similar papers using cosine similarity.
+
+    Note: Only arXiv papers have embeddings. DBLP papers will not appear
+    in vector search results unless embeddings are generated separately.
 
     Args:
-        query: 查询文本
-        top_k: 返回结果数
-        category_filter: 类别过滤，如 "cs.AI"
-        year_from: 起始年份
+        query: Search query string
+        top_k: Number of results to return
+        source: Filter by source ('arxiv', 'dblp')
+        year_from: Filter by minimum year
     """
-    # 加载模型
-    print(f"📥 加载模型...")
-    model = SentenceTransformer(MODEL_NAME, device='cpu')
+    print("📥 Loading model...")
+    model = SentenceTransformer(MODEL_NAME, device="cpu")
 
-    # 生成查询向量
-    print(f"🔍 查询: {query}")
-    query_embedding = model.encode(query, convert_to_numpy=True).tolist()
+    print(f"🔍 Query: {query}")
+    if source:
+        print(f"   Source filter: {source}")
+    if year_from:
+        print(f"   Year filter: >= {year_from}")
 
-    conn = await asyncpg.connect(**DB_CONFIG)
+    query_vec = model.encode(query, convert_to_numpy=True).tolist()
+
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
 
     try:
-        # 构建查询
-        conditions = []
-        params = [query_embedding, top_k]
+        # Build WHERE clause
+        where_clauses = ["embedding IS NOT NULL"]
+        params = []
 
-        if category_filter:
-            conditions.append(f"categories @> ARRAY['{category_filter}']")
+        if source:
+            where_clauses.append("source = %s")
+            params.append(source)
+        else:
+            # Default to arXiv for vector search (DBLP has no embeddings)
+            where_clauses.append("source = 'arxiv'")
 
         if year_from:
-            conditions.append(f"year >= {year_from}")
+            where_clauses.append("year >= %s")
+            params.append(year_from)
 
-        where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
+        # Add query vector for the ORDER BY (twice for the two parameters)
+        params.extend([query_vec, query_vec, top_k])
 
         sql = f"""
-            SELECT
-                id,
-                title,
-                authors,
-                categories,
-                year,
-                1 - (embedding <=> $1) as similarity
+            SELECT id, title, authors, year, venue, source,
+                   1 - (embedding <=> %s::vector) as similarity
             FROM papers
-            {where_clause}
-            ORDER BY embedding <=> $1
-            LIMIT $2
+            WHERE {" AND ".join(where_clauses)}
+            ORDER BY embedding <=> %s::vector
+            LIMIT %s
         """
 
-        print(f"📊 执行查询...")
-        rows = await conn.fetch(sql, *params)
+        cursor.execute(sql, params)
+        rows = cursor.fetchall()
 
-        print(f"\n{'='*60}")
-        print(f"找到 {len(rows)} 篇相关论文:")
-        print(f"{'='*60}\n")
+        print(f"\n{'=' * 70}")
+        print("Vector Similarity Search Results:")
+        print(f"{'=' * 70}\n")
 
-        for i, row in enumerate(rows, 1):
-            similarity = row['similarity'] * 100
-            print(f"{i}. [{row['id']}] 相似度: {similarity:.1f}%")
-            print(f"   标题: {row['title'][:80]}...")
-            print(f"   作者: {', '.join(row['authors'][:3]) if row['authors'] else 'N/A'}")
-            print(f"   类别: {', '.join(row['categories'][:3]) if row['categories'] else 'N/A'}")
-            print(f"   年份: {row['year']}")
-            print()
-
-    finally:
-        await conn.close()
-
-
-async def fulltext_search(query: str, top_k: int = 10):
-    """使用PostgreSQL全文搜索"""
-    conn = await asyncpg.connect(**DB_CONFIG)
-
-    try:
-        sql = """
-            SELECT
-                id,
-                title,
-                authors,
-                categories,
-                year,
-                ts_rank(
-                    to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE(abstract, '')),
-                    plainto_tsquery('english', $1)
-                ) as rank
-            FROM papers
-            WHERE to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE(abstract, ''))
-                  @@ plainto_tsquery('english', $1)
-            ORDER BY rank DESC
-            LIMIT $2
-        """
-
-        print(f"🔍 全文搜索: {query}")
-        rows = await conn.fetch(sql, query, top_k)
-
-        print(f"\n{'='*60}")
-        print(f"找到 {len(rows)} 篇相关论文:")
-        print(f"{'='*60}\n")
+        if not rows:
+            print("No results found.")
+            print("\nNote: Only arXiv papers have embeddings.")
+            print("      DBLP papers need separate embedding generation.")
+            return
 
         for i, row in enumerate(rows, 1):
-            print(f"{i}. [{row['id']}] 相关度: {row['rank']:.3f}")
-            print(f"   标题: {row['title'][:80]}...")
-            print(f"   作者: {', '.join(row['authors'][:3]) if row['authors'] else 'N/A'}")
-            print(f"   年份: {row['year']}")
-            print()
+            paper_id = row[0]
+            title = row[1]
+            authors = row[2] or []
+            year = row[3]
+            venue = row[4]
+            paper_source = row[5]
+            similarity = row[6]
 
-    finally:
-        await conn.close()
+            source_tag = f"[{paper_source.upper()}]"
+            venue_str = f" @ {venue}" if venue else ""
 
-
-async def hybrid_search(query: str, top_k: int = 10):
-    """混合搜索：向量相似度 + 全文搜索 + 重排序"""
-    # 加载模型
-    model = SentenceTransformer(MODEL_NAME, device='cpu')
-    query_embedding = model.encode(query, convert_to_numpy=True).tolist()
-
-    conn = await asyncpg.connect(**DB_CONFIG)
-
-    try:
-        # 同时获取向量搜索结果和全文搜索结果
-        sql = """
-            WITH vector_results AS (
-                SELECT
-                    id,
-                    title,
-                    authors,
-                    abstract,
-                    categories,
-                    year,
-                    1 - (embedding <=> $1) as vector_score
-                FROM papers
-                ORDER BY embedding <=> $1
-                LIMIT $2 * 2
-            ),
-            text_results AS (
-                SELECT
-                    id,
-                    ts_rank(
-                        to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE(abstract, '')),
-                        plainto_tsquery('english', $3)
-                    ) as text_score
-                FROM papers
-                WHERE to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE(abstract, ''))
-                      @@ plainto_tsquery('english', $3)
-                ORDER BY text_score DESC
-                LIMIT $2 * 2
+            print(f"{i}. {source_tag} [{paper_id}] sim={similarity:.3f}")
+            print(f"   Title: {title[:80]}{'...' if len(title) > 80 else ''}")
+            author_list = authors[:3] if authors else []
+            print(
+                f"   Authors: {', '.join(author_list)}{' et al.' if len(authors) > 3 else ''}"
             )
-            SELECT
-                v.id,
-                v.title,
-                v.authors,
-                v.categories,
-                v.year,
-                v.vector_score,
-                COALESCE(t.text_score, 0) as text_score,
-                (v.vector_score * 0.7 + COALESCE(t.text_score, 0) * 0.3) as hybrid_score
-            FROM vector_results v
-            LEFT JOIN text_results t ON v.id = t.id
-            ORDER BY hybrid_score DESC
-            LIMIT $2
-        """
+            print(f"   Year: {year}{venue_str}\n")
 
-        print(f"🔍 混合搜索: {query}")
-        rows = await conn.fetch(sql, query_embedding, top_k, query)
-
-        print(f"\n{'='*60}")
-        print(f"找到 {len(rows)} 篇相关论文 (向量+全文):")
-        print(f"{'='*60}\n")
-
-        for i, row in enumerate(rows, 1):
-            print(f"{i}. [{row['id']}] 混合得分: {row['hybrid_score']:.3f}")
-            print(f"   向量得分: {row['vector_score']:.3f}, 文本得分: {row['text_score']:.3f}")
-            print(f"   标题: {row['title'][:80]}...")
-            print(f"   作者: {', '.join(row['authors'][:3]) if row['authors'] else 'N/A'}")
-            print(f"   年份: {row['year']}")
-            print()
+        # Show database stats
+        cursor.execute("""
+            SELECT source, COUNT(*), COUNT(embedding)
+            FROM papers
+            WHERE source IN ('arxiv', 'dblp')
+            GROUP BY source
+        """)
+        counts = cursor.fetchall()
+        print("-" * 70)
+        print("Database stats:")
+        for src, total, with_emb in counts:
+            print(f"   {src}: {total:,} papers ({with_emb:,} with embeddings)")
 
     finally:
-        await conn.close()
+        cursor.close()
+        conn.close()
 
 
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description="查询arXiv论文")
-    parser.add_argument("query", help="查询文本")
-    parser.add_argument("-k", "--top-k", type=int, default=10, help="返回结果数")
-    parser.add_argument("-c", "--category", help="类别过滤，如 cs.AI")
-    parser.add_argument("-y", "--year-from", type=int, help="起始年份")
-    parser.add_argument("--fulltext", action="store_true", help="使用全文搜索")
-    parser.add_argument("--hybrid", action="store_true", help="使用混合搜索")
+    parser = argparse.ArgumentParser(
+        description="Search similar papers using vector similarity"
+    )
+    parser.add_argument("query", help="Search query")
+    parser.add_argument("-k", "--top-k", type=int, default=10, help="Number of results")
+    parser.add_argument(
+        "-s",
+        "--source",
+        type=str,
+        default=None,
+        choices=["arxiv", "dblp"],
+        help="Filter by source (default: arxiv)",
+    )
+    parser.add_argument(
+        "-y", "--year-from", type=int, default=None, help="Filter by minimum year"
+    )
     args = parser.parse_args()
 
-    print("=" * 60)
-    print("arXiv 论文查询工具")
-    print("=" * 60)
-
-    if args.hybrid:
-        asyncio.run(hybrid_search(args.query, args.top_k))
-    elif args.fulltext:
-        asyncio.run(fulltext_search(args.query, args.top_k))
-    else:
-        asyncio.run(search_similar_papers(
-            args.query,
-            args.top_k,
-            args.category,
-            args.year_from
-        ))
+    search_similar(args.query, args.top_k, args.source, args.year_from)
 
 
 if __name__ == "__main__":

@@ -1,26 +1,32 @@
 """Tool call monitoring using blinker signals."""
+
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Any, Callable, List
+from typing import Dict, Optional, Any, Callable
 from datetime import datetime, timedelta
 from collections import deque
 from blinker import signal
 import threading
+import time
 
 # 定义信号
-tool_call_started = signal('tool-call-started')
-tool_call_ended = signal('tool-call-ended')
+tool_call_started = signal("tool-call-started")
+tool_call_ended = signal("tool-call-ended")
+
+# Constants for cleanup
+ACTIVE_CALL_MAX_AGE_SECONDS = 300  # 5 minutes
 
 
 @dataclass
 class ToolStats:
     """工具统计聚合"""
+
     tool_name: str
     total_calls: int = 0
     successful_calls: int = 0
     failed_calls: int = 0
     total_duration_ms: float = 0.0
     max_duration_ms: float = 0.0
-    min_duration_ms: float = float('inf')
+    min_duration_ms: float = float("inf")
     total_results: int = 0
     errors: Dict[str, int] = field(default_factory=dict)
     # Real-time tracking via signals
@@ -57,7 +63,9 @@ class ToolStats:
             "failed_calls": self.failed_calls,
             "avg_duration_ms": round(self.avg_duration_ms, 2),
             "max_duration_ms": round(self.max_duration_ms, 2),
-            "min_duration_ms": round(self.min_duration_ms, 2) if self.min_duration_ms != float('inf') else 0,
+            "min_duration_ms": round(self.min_duration_ms, 2)
+            if self.min_duration_ms != float("inf")
+            else 0,
             "avg_results": round(self.avg_results, 2),
             "errors": self.errors,
             "active_tasks": self.active_tasks,
@@ -86,17 +94,43 @@ class ToolMetricsCollector:
         self._stats: Dict[str, ToolStats] = {}
         self._active_calls: Dict[str, dict] = {}  # track active calls by query
         self._on_update = on_update  # 数据更新时的回调
+        self._last_cleanup = time.time()
 
         # 自动订阅信号
         tool_call_started.connect(self._on_started)
         tool_call_ended.connect(self._on_ended)
 
+    def _cleanup_stale_calls(self):
+        """Remove stale active calls that haven't completed within the max age."""
+        now = time.time()
+        # Only run cleanup every 60 seconds to avoid overhead
+        if now - self._last_cleanup < 60:
+            return
+
+        cutoff = now - ACTIVE_CALL_MAX_AGE_SECONDS
+        stale_queries = [
+            query for query, data in self._active_calls.items()
+            if data.get("start_time", now) < cutoff
+        ]
+        for query in stale_queries:
+            self._active_calls.pop(query, None)
+            # Also decrement active_tasks for the tool
+            tool_name = self._active_calls.get(query, {}).get("tool_name")
+            if tool_name and tool_name in self._stats:
+                self._stats[tool_name].active_tasks = max(
+                    0, self._stats[tool_name].active_tasks - 1
+                )
+        self._last_cleanup = now
+
     def _on_started(self, sender, **kwargs):
         """处理调用开始信号 - 增加活跃计数"""
-        tool_name = kwargs['tool_name']
-        query = kwargs['query']
+        tool_name = kwargs["tool_name"]
+        query = kwargs["query"]
 
         with self._lock:
+            # Cleanup stale calls periodically
+            self._cleanup_stale_calls()
+
             stats = self._stats.get(tool_name)
             if stats is None:
                 stats = ToolStats(tool_name=tool_name)
@@ -104,8 +138,8 @@ class ToolMetricsCollector:
 
             stats.active_tasks += 1
             self._active_calls[query] = {
-                'tool_name': tool_name,
-                'start_time': kwargs['start_time'],
+                "tool_name": tool_name,
+                "start_time": time.time(),
             }
 
         # 通知更新
@@ -114,8 +148,8 @@ class ToolMetricsCollector:
 
     def _on_ended(self, sender, **kwargs):
         """处理调用结束信号，更新统计 - 减少活跃计数"""
-        tool_name = kwargs['tool_name']
-        query = kwargs['query']
+        tool_name = kwargs["tool_name"]
+        query = kwargs["query"]
 
         with self._lock:
             stats = self._stats.get(tool_name)
@@ -126,19 +160,19 @@ class ToolMetricsCollector:
             stats.total_calls += 1
             stats.record_call()  # for rate calculation
 
-            if kwargs.get('success'):
+            if kwargs.get("success"):
                 stats.successful_calls += 1
             else:
                 stats.failed_calls += 1
-                error_type = kwargs.get('error_type')
+                error_type = kwargs.get("error_type")
                 if error_type:
                     stats.errors[error_type] = stats.errors.get(error_type, 0) + 1
 
-            duration = kwargs.get('duration_ms', 0)
+            duration = kwargs.get("duration_ms", 0)
             stats.total_duration_ms += duration
             stats.max_duration_ms = max(stats.max_duration_ms, duration)
             stats.min_duration_ms = min(stats.min_duration_ms, duration)
-            stats.total_results += kwargs.get('result_count', 0)
+            stats.total_results += kwargs.get("result_count", 0)
 
             # Decrement active tasks
             stats.active_tasks = max(0, stats.active_tasks - 1)
@@ -159,11 +193,17 @@ class ToolMetricsCollector:
                 "total_calls": total_calls,
                 "successful_calls": successful,
                 "failed_calls": sum(s.failed_calls for s in self._stats.values()),
-                "success_rate": round(successful / total_calls, 4) if total_calls else 0,
+                "success_rate": round(successful / total_calls, 4)
+                if total_calls
+                else 0,
                 "avg_duration_ms": round(
-                    sum(s.total_duration_ms for s in self._stats.values()) / total_calls, 2
-                ) if total_calls else 0,
-                "by_tool": {name: s.to_dict() for name, s in self._stats.items()}
+                    sum(s.total_duration_ms for s in self._stats.values())
+                    / total_calls,
+                    2,
+                )
+                if total_calls
+                else 0,
+                "by_tool": {name: s.to_dict() for name, s in self._stats.items()},
             }
 
     def get_stats_table(self) -> "Table":
@@ -182,8 +222,8 @@ class ToolMetricsCollector:
         table.add_column("Failed", justify="right", style="red")
         table.add_column("Avg Time", justify="right")
         table.add_column("Status", justify="center")  # 原 Circuit 列
-        table.add_column("并发数", justify="right")    # 原 Active 列
-        table.add_column("Rate", justify="right")      # 新增调用速率列
+        table.add_column("并发数", justify="right")  # 原 Active 列
+        table.add_column("Rate", justify="right")  # 新增调用速率列
 
         for tool_name, tool_stats in stats["by_tool"].items():
             # Get circuit state from tool instance if available
@@ -218,7 +258,7 @@ class ToolMetricsCollector:
             "",
             "",
             "",
-            style="dim"
+            style="dim",
         )
 
         return table

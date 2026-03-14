@@ -6,11 +6,12 @@ from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 import xml.etree.ElementTree as ET
 
+import asyncpg
 import httpx
 from ddgs import DDGS
 from pydantic import BaseModel, Field
 from scholarly import scholarly
-from semanticscholar import SemanticScholar
+import json
 
 from .search_cache import get_cache
 from .config import (
@@ -18,7 +19,6 @@ from .config import (
     CIRCUIT_BREAKER_HALF_OPEN_CALLS,
     CIRCUIT_BREAKER_RECOVERY_TIMEOUT,
     DUCKDUCKGO_SEARCH_LIMIT,
-    OPENALEX_SEARCH_LIMIT,
     SCHOLAR_SEARCH_LIMIT,
     SEMANTIC_SCHOLAR_API_KEY,
     TOKEN_BUCKET_BURST_SIZE,
@@ -28,6 +28,11 @@ from .config import (
     TOKEN_BUCKET_RATE_OPENREVIEW,
     TOKEN_BUCKET_RATE_SCHOLAR,
     TOKEN_BUCKET_RATE_SEMANTIC_SCHOLAR,
+    DB_HOST,
+    DB_PORT,
+    DB_USER,
+    DB_PASSWORD,
+    DB_NAME,
 )
 from .logger import logger
 from .search_queue import CircuitBreakerOpen, SearchTask, ToolRequestQueue
@@ -48,15 +53,14 @@ class SearchResult(BaseModel):
     source: str = Field(..., description="Source of the result")
 
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 # Shared thread pool for sync operations
 _sync_executor = ThreadPoolExecutor(max_workers=10, thread_name_prefix="search_sync_")
 
+
 async def run_in_executor_cancellable(
-    func: Callable[..., T],
-    *args,
-    timeout: Optional[float] = None
+    func: Callable[..., T], *args, timeout: Optional[float] = None
 ) -> T:
     """
     Run a synchronous function in a thread pool with proper cancellation support.
@@ -73,16 +77,15 @@ async def run_in_executor_cancellable(
     try:
         if timeout:
             # Use wait_for for timeout support
-            return await asyncio.wait_for(
-                asyncio.wrap_future(future),
-                timeout=timeout
-            )
+            return await asyncio.wait_for(asyncio.wrap_future(future), timeout=timeout)
         else:
             return await asyncio.wrap_future(future)
     except asyncio.CancelledError:
         # Cancel the future if possible
         future.cancel()
         raise
+
+
 class SearchTool:
     """
     Base class for search tools with queue-based rate limiting and circuit breaker protection.
@@ -147,10 +150,7 @@ class SearchTool:
 
         # Publish start signal
         tool_call_started.send(
-            'searchtool',
-            tool_name=tool_name,
-            query=query,
-            start_time=start_time
+            "searchtool", tool_name=tool_name, query=query, start_time=start_time
         )
 
         task = SearchTask(
@@ -174,12 +174,23 @@ class SearchTool:
             # Try to return cached result even if circuit is open
             cached_data = cache.get(tool_name, query, limit)
             if cached_data is not None:
-                logger.info(f"[{tool_name}] Circuit open, using cached result for: {query[:50]}...")
-                self._emit_end_signal(tool_name, query, start_time, True, len(cached_data), "CircuitBreakerOpen_CacheHit")
+                logger.info(
+                    f"[{tool_name}] Circuit open, using cached result for: {query[:50]}..."
+                )
+                self._emit_end_signal(
+                    tool_name,
+                    query,
+                    start_time,
+                    True,
+                    len(cached_data),
+                    "CircuitBreakerOpen_CacheHit",
+                )
                 return [SearchResult(**item) for item in cached_data]
 
             logger.warning(f"[{tool_name}] Circuit breaker is OPEN - failing fast")
-            self._emit_end_signal(tool_name, query, start_time, False, 0, "CircuitBreakerOpen")
+            self._emit_end_signal(
+                tool_name, query, start_time, False, 0, "CircuitBreakerOpen"
+            )
             return []
 
         except asyncio.CancelledError:
@@ -189,7 +200,9 @@ class SearchTool:
 
         except Exception as e:
             logger.error(f"[{tool_name}] Search failed: {e}")
-            self._emit_end_signal(tool_name, query, start_time, False, 0, e.__class__.__name__)
+            self._emit_end_signal(
+                tool_name, query, start_time, False, 0, e.__class__.__name__
+            )
             return []
 
     def _emit_end_signal(
@@ -199,21 +212,21 @@ class SearchTool:
         start_time: datetime,
         success: bool,
         result_count: int,
-        error_type: str = None
+        error_type: str = None,
     ):
         """Emit tool call end signal."""
         end_time = datetime.now()
         duration_ms = (end_time - start_time).total_seconds() * 1000
 
         tool_call_ended.send(
-            'searchtool',
+            "searchtool",
             tool_name=tool_name,
             query=query,
             end_time=end_time,
             duration_ms=duration_ms,
             success=success,
             result_count=result_count,
-            error_type=error_type
+            error_type=error_type,
         )
 
     async def _execute_search_task(self, task: SearchTask) -> List[SearchResult]:
@@ -249,9 +262,13 @@ class SearchTool:
                         try:
                             backoff_duration = float(retry_after) + 1.0
                         except ValueError:
-                            backoff_duration = (base_backoff * (2**attempt)) + random.uniform(0, 1)
+                            backoff_duration = (
+                                base_backoff * (2**attempt)
+                            ) + random.uniform(0, 1)
                     else:
-                        backoff_duration = (base_backoff * (2**attempt)) + random.uniform(0, 1)
+                        backoff_duration = (
+                            base_backoff * (2**attempt)
+                        ) + random.uniform(0, 1)
 
                     logger.warning(
                         f"[{self.__class__.__name__}] 429 Too Many Requests. "
@@ -268,7 +285,9 @@ class SearchTool:
 
             except Exception as e:
                 if attempt < max_retries:
-                    backoff_duration = (base_backoff * (2**attempt)) + random.uniform(0, 1)
+                    backoff_duration = (base_backoff * (2**attempt)) + random.uniform(
+                        0, 1
+                    )
                     logger.warning(
                         f"[{self.__class__.__name__}] Error: {str(e)}. "
                         f"Retrying in {backoff_duration:.2f}s... (attempt {attempt + 1}/{max_retries})"
@@ -367,7 +386,9 @@ class ScholarlySearch(SearchTool):
 
     async def _perform_asearch(self, query: str, limit: int) -> List[SearchResult]:
         """Async wrapper for synchronous scholarly search with cancellation support."""
-        return await run_in_executor_cancellable(self._perform_search_sync, query, limit)
+        return await run_in_executor_cancellable(
+            self._perform_search_sync, query, limit
+        )
 
     def _perform_search_sync(
         self, query: str, limit: int = SCHOLAR_SEARCH_LIMIT
@@ -540,7 +561,9 @@ class DuckDuckGoSearch(SearchTool):
 
     async def _perform_asearch(self, query: str, limit: int) -> List[SearchResult]:
         """Async wrapper for synchronous DuckDuckGo search with cancellation support."""
-        return await run_in_executor_cancellable(self._perform_search_sync, query, limit)
+        return await run_in_executor_cancellable(
+            self._perform_search_sync, query, limit
+        )
 
     def _perform_search_sync(
         self, query: str, limit: int = DUCKDUCKGO_SEARCH_LIMIT
@@ -604,12 +627,14 @@ class AggregateSearch:
         tasks: List[asyncio.Task[List[SearchResult]]] = []
         for source in valid_sources:
             tool = self.tools[source]
+
             # Add timeout control per source to avoid slow sources blocking
             async def search_with_timeout(tool=tool, query=query, limit=limit):
                 return await asyncio.wait_for(
                     tool.asearch(query, limit=limit),
-                    timeout=8.0  # 8 second timeout per source
+                    timeout=8.0,  # 8 second timeout per source
                 )
+
             tasks.append(asyncio.create_task(search_with_timeout()))
 
         results_list: List[Union[List[SearchResult], Exception]] = await asyncio.gather(
@@ -640,17 +665,7 @@ class AggregateSearch:
             title_norm = item.title.lower().strip()
             if title_norm and title_norm not in seen_titles:
                 seen_titles.add(title_norm)
-
-                # Prune attributes to limit context length
-                if len(item.title) > 150:
-                    item.title = item.title[:150] + "..."
-                if len(item.abstract) > 300:
-                    item.abstract = item.abstract[:300] + "..."
-                if len(item.authors) > 10:
-                    item.authors = item.authors[:10]
-                    item.authors.append("et al.")
-
-                unique_results.append(item)
+                unique_results.append(prune_search_result(item))
 
         # Add markers for failed sources so the model knows which sources didn't return data
         for source in failed_sources:
@@ -668,3 +683,268 @@ class AggregateSearch:
 
         dicts = [item.model_dump() for item in unique_results]
         return dicts
+
+
+def prune_search_result(item: SearchResult) -> SearchResult:
+    """Prune result attributes to limit context length."""
+    if len(item.title) > 150:
+        item.title = item.title[:150] + "..."
+    if len(item.abstract) > 300:
+        item.abstract = item.abstract[:300] + "..."
+    if len(item.authors) > 10:
+        item.authors = item.authors[:10]
+        item.authors.append("et al.")
+    return item
+
+
+class LocalDBSearch(SearchTool):
+    """Local ParadeDB BM25 search for ValiRef Agent."""
+
+    token_bucket_rate = 20.0  # Local database can support higher QPS
+
+    def __init__(self):
+        super().__init__()
+        self.db_config = {
+            "host": DB_HOST,
+            "port": DB_PORT,
+            "user": DB_USER,
+            "password": DB_PASSWORD,
+            "database": DB_NAME,
+        }
+        self._pool: Optional[asyncpg.Pool] = None
+
+    async def _get_pool(self) -> asyncpg.Pool:
+        """Get or create connection pool."""
+        if self._pool is None:
+            self._pool = await asyncpg.create_pool(
+                host=self.db_config["host"],
+                port=self.db_config["port"],
+                user=self.db_config["user"],
+                password=self.db_config["password"],
+                database=self.db_config["database"],
+                min_size=2,
+                max_size=10,
+            )
+        return self._pool
+
+    async def _perform_asearch(self, query: str, limit: int = 5) -> List[SearchResult]:
+        """Search local ParadeDB using BM25."""
+        pool = await self._get_pool()
+
+        try:
+            async with pool.acquire() as conn:
+                # Escape the query for ParadeDB: wrap in double quotes to treat as phrase
+                # This prevents special characters like ':' from being interpreted as field operators
+                escaped_query = f'"{query.replace("\"", "\\\"")}"'
+
+                # Use ParadeDB BM25 search with @@@ operator
+                # Search in title and abstract fields
+                # Note: Schema uses 'year' instead of 'published_date', 'journal_ref' for arxiv date
+                sql = """
+                    SELECT
+                        id,
+                        title,
+                        authors,
+                        year,
+                        venue,
+                        source,
+                        abstract,
+                        journal_ref,
+                        doi,
+                        paradedb.score(id) as rank
+                    FROM papers
+                    WHERE (title || ' ' || COALESCE(abstract, '')) @@@ $1
+                    ORDER BY rank DESC
+                    LIMIT $2
+                """
+
+                rows = await conn.fetch(sql, escaped_query, limit)
+
+                results = []
+                for row in rows:
+                    # Parse authors (stored as array in PostgreSQL)
+                    authors = row["authors"] or []
+                    if isinstance(authors, str):
+                        try:
+                            authors = json.loads(authors)
+                        except json.JSONDecodeError:
+                            authors = [authors]
+
+                    # Build URL based on source
+                    source = row["source"] or "unknown"
+                    if source == "arxiv":
+                        url = f"https://arxiv.org/abs/{row['id']}"
+                        # For arxiv, year is typically the publication year
+                        published_date = str(row["year"]) if row["year"] else "N/A"
+                    elif source == "dblp":
+                        url = f"https://dblp.org/rec/{row['id']}.html"
+                        published_date = str(row["year"]) if row["year"] else "N/A"
+                    else:
+                        url = row["doi"] or f"https://arxiv.org/abs/{row['id']}"
+                        published_date = str(row["year"]) if row["year"] else "N/A"
+
+                    results.append(
+                        SearchResult(
+                            title=row["title"],
+                            authors=authors if isinstance(authors, list) else [],
+                            published_date=published_date,
+                            venue=row["venue"] or row["journal_ref"] or "N/A",
+                            abstract=row["abstract"] or "N/A",
+                            url=url,
+                            source=f"local_db_{source}",
+                        )
+                    )
+
+                return results
+
+        except Exception as e:
+            logger.error(f"[LocalDBSearch] Database query failed: {e}")
+            raise
+
+
+class LocalAggregateSearch:
+    """
+    Local aggregate search that only queries local ParadeDB.
+    """
+
+    def __init__(self):
+        self.tool = LocalDBSearch()
+
+    async def asearch(
+        self, query: str, sources: List[str] = None, limit: int = 5
+    ) -> List[Dict]:
+        """
+        Search local database.
+
+        Args:
+            query: The search query.
+            sources: Ignored for local search (kept for compatibility).
+            limit: Max results to return.
+
+        Returns:
+            List of search result dictionaries.
+        """
+        logger.info(f"Local aggregate search for '{query}'")
+
+        results = await self.tool.asearch(query, limit=limit)
+
+        # Prune attributes to limit context length
+        pruned_results = [prune_search_result(item) for item in results]
+
+        return [r.model_dump() for r in pruned_results]
+
+
+class OnlineAggregateSearch:
+    """
+    Online aggregate search that queries multiple external API sources.
+    """
+
+    def __init__(self):
+        self.tools = {
+            "arxiv": ArxivSearch(),
+            "openreview": OpenReviewSearch(),
+            "openalex": OpenAlexSearch(),
+            "duckduckgo": DuckDuckGoSearch(),
+        }
+
+    async def asearch(
+        self, query: str, sources: List[str] = None, limit: int = 5
+    ) -> List[Dict]:
+        """
+        Search multiple online sources concurrently.
+
+        Args:
+            query: The search query.
+            sources: List of sources to search.
+            limit: Max results per source.
+
+        Returns:
+            List of search result dictionaries.
+        """
+        if sources is None:
+            sources = ["arxiv", "openalex", "openreview"]
+
+        valid_sources = [s for s in sources if s in self.tools]
+        if not valid_sources:
+            logger.warning(f"No valid sources provided in {sources}. Using default.")
+            valid_sources = ["arxiv", "openalex"]
+
+        logger.info(f"Online aggregate search for '{query}' on {valid_sources}")
+
+        tasks: List[asyncio.Task[List[SearchResult]]] = []
+        for source in valid_sources:
+            tool = self.tools[source]
+
+            async def search_with_timeout(tool=tool, query=query, limit=limit):
+                return await asyncio.wait_for(
+                    tool.asearch(query, limit=limit), timeout=8.0
+                )
+
+            tasks.append(asyncio.create_task(search_with_timeout()))
+
+        results_list: List[Union[List[SearchResult], Exception]] = await asyncio.gather(
+            *tasks, return_exceptions=True
+        )
+
+        final_results: List[SearchResult] = []
+        failed_sources: List[str] = []
+
+        for i, result in enumerate(results_list):
+            source_name = valid_sources[i]
+            if isinstance(result, asyncio.TimeoutError):
+                logger.warning(f"Timeout searching {source_name}")
+                failed_sources.append(source_name)
+            elif isinstance(result, Exception):
+                logger.error(f"Error searching {source_name}: {result}")
+                failed_sources.append(source_name)
+            elif result:
+                final_results.extend(result)
+            else:
+                failed_sources.append(source_name)
+
+        # Simple deduplication by title (normalized)
+        seen_titles = set()
+        unique_results: List[SearchResult] = []
+        for item in final_results:
+            title_norm = item.title.lower().strip()
+            if title_norm and title_norm not in seen_titles:
+                seen_titles.add(title_norm)
+                unique_results.append(prune_search_result(item))
+
+        # Add markers for failed sources
+        for source in failed_sources:
+            unique_results.append(
+                SearchResult(
+                    title=f"[Source Unavailable: {source}]",
+                    authors=[],
+                    published_date="N/A",
+                    venue="N/A",
+                    abstract=f"The {source} source did not return any results.",
+                    url="N/A",
+                    source=f"{source}_unavailable",
+                )
+            )
+
+        return [item.model_dump() for item in unique_results]
+
+
+class AggregateSearchFactory:
+    """Search aggregator factory, supports local and online modes."""
+
+    @staticmethod
+    def create(mode: str = "local"):
+        """
+        Create search aggregator.
+
+        Args:
+            mode: "local" or "online"
+
+        Returns:
+            LocalAggregateSearch or OnlineAggregateSearch instance
+        """
+        if mode == "local":
+            return LocalAggregateSearch()
+        elif mode == "online":
+            return OnlineAggregateSearch()
+        else:
+            raise ValueError(f"Unknown search mode: {mode}")

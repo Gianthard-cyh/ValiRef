@@ -1,248 +1,182 @@
 #!/usr/bin/env python3
 """
-arXiv Embedding 生成脚本（多进程加速版）
-使用 sentence-transformers + multiprocessing 加速
+Minimal arXiv embedding generator with sliding window chunking.
+Uses parameterized queries for safe database writes.
 """
 
-import asyncio
-import asyncpg
-import torch
+import os
+import time
 import numpy as np
-from pathlib import Path
+import psycopg2
+from psycopg2.extras import execute_values
 from tqdm import tqdm
 from sentence_transformers import SentenceTransformer
-import multiprocessing as mp
-from multiprocessing import Pool, cpu_count
-import sys
 
-# 配置
+# Config
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
-BATCH_SIZE = 128  # 模型批处理大小
+BATCH_SIZE = 64
+MAX_TOKENS = 512
+OVERLAP = 128
+DIMENSION = 384  # all-MiniLM-L6-v2 output dimension
+
 DB_CONFIG = {
-    "host": "localhost",
-    "port": 5432,
-    "user": "valiref",
-    "password": "valiref_secret",
-    "database": "arxiv_db"
+    "host": os.getenv("DB_HOST", "127.0.0.1"),
+    "port": int(os.getenv("DB_PORT", "5432")),
+    "user": os.getenv("DB_USER", "valiref"),
+    "password": os.getenv("DB_PASSWORD", "valiref_secret"),
+    "database": os.getenv("DB_NAME", "arxiv_db"),
 }
 
-# 全局模型（worker进程内）
-_model = None
 
-
-def init_worker():
-    """worker进程初始化 - 加载模型"""
-    global _model
-    print(f"[Worker {mp.current_process().name}] 加载模型...")
-    _model = SentenceTransformer(MODEL_NAME, device='cpu')
-    _model.eval()
-
-
-def generate_embeddings_batch(texts: list[str]) -> list[list[float]]:
-    """批量生成embedding"""
-    global _model
-    if _model is None:
-        _model = SentenceTransformer(MODEL_NAME, device='cpu')
-
-    # 清理文本
-    texts = [t.strip().replace('\n', ' ')[:3000] for t in texts]  # 截断到3000字符
-
-    with torch.no_grad():
-        embeddings = _model.encode(
-            texts,
-            batch_size=len(texts),
-            show_progress_bar=False,
-            convert_to_numpy=True
-        )
-
-    # 转换为Python列表
-    return embeddings.tolist()
-
-
-def process_batch(batch_data: list[tuple]) -> list[tuple]:
-    """处理一批论文，返回 (id, embedding) 列表"""
-    ids = [item[0] for item in batch_data]
-    texts = [item[1] for item in batch_data]
-
-    embeddings = generate_embeddings_batch(texts)
-
-    return list(zip(ids, embeddings))
-
-
-async def generate_embeddings_parallel(limit: int = 10000, num_workers: int = None):
+def sliding_window_encode(
+    text: str, model, max_tokens: int = 512, overlap: int = 128
+) -> tuple[np.ndarray, int]:
     """
-    并行生成embedding
+    Encode long text using sliding window + mean pooling.
 
     Args:
-        limit: 最多处理多少条记录
-        num_workers: 并行进程数，默认CPU核心数
+        text: Input text
+        model: SentenceTransformer model
+        max_tokens: Max tokens per chunk
+        overlap: Overlap between consecutive chunks
+
+    Returns:
+        Tuple of (mean-pooled embedding vector, token count)
     """
-    if num_workers is None:
-        num_workers = min(cpu_count(), 4)  # 最多4个进程，避免内存爆炸
+    tokenizer = model.tokenizer
+    tokens = tokenizer.encode(text, add_special_tokens=False)
+    token_count = len(tokens)
 
-    print(f"🚀 启动 {num_workers} 个进程并行生成embedding...")
-    print(f"   模型: {MODEL_NAME}")
-    print(f"   批次: {BATCH_SIZE} 条/批")
+    # Short text: direct encode
+    if token_count <= max_tokens:
+        embedding = model.encode(text, convert_to_numpy=True, show_progress_bar=False)
+        return embedding, token_count
 
-    conn = await asyncpg.connect(**DB_CONFIG)
+    # Long text: sliding window
+    embeddings = []
+    step = max_tokens - overlap
+
+    for i in range(0, len(tokens), step):
+        chunk_tokens = tokens[i : i + max_tokens]
+        chunk_text = tokenizer.decode(chunk_tokens, skip_special_tokens=True)
+        emb = model.encode(chunk_text, convert_to_numpy=True, show_progress_bar=False)
+        embeddings.append(emb)
+
+        if i + max_tokens >= len(tokens):
+            break
+
+    return np.mean(embeddings, axis=0), token_count
+
+
+def process_batch(rows, model) -> tuple[list, int]:
+    """Process a batch of papers and return (id, embedding) tuples and multi-chunk count."""
+    results = []
+    multi_chunk = 0
+
+    for row in rows:
+        paper_id, title, abstract = row
+        text = f"{title}\n\n{abstract}" if abstract else title
+
+        # Sliding window encoding - returns embedding and token count
+        embedding, token_count = sliding_window_encode(text, model, MAX_TOKENS, OVERLAP)
+
+        # Track multi-chunk papers
+        if token_count > MAX_TOKENS:
+            multi_chunk += 1
+
+        # Convert to list for pgvector
+        results.append((paper_id, embedding.tolist()))
+
+    return results, multi_chunk
+
+
+def generate_embeddings(limit: int = None):
+    """Generate embeddings for papers without them."""
+    print("🚀 Embedding Generator")
+    print(f"   Model: {MODEL_NAME}")
+    print(f"   Strategy: sliding window (max_tokens={MAX_TOKENS}, overlap={OVERLAP})")
+
+    # Load model
+    print("\n📥 Loading model...")
+    model = SentenceTransformer(MODEL_NAME, device="cpu")
+    model.eval()
+
+    # Connect to DB
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
 
     try:
-        # 获取需要生成embedding的论文
-        rows = await conn.fetch(
-            """
-            SELECT id, title, abstract
-            FROM papers
-            WHERE embedding IS NULL
-            LIMIT $1
-            """,
-            limit
-        )
+        # Count pending
+        cursor.execute("SELECT COUNT(*) FROM papers WHERE embedding IS NULL")
+        total_pending = cursor.fetchone()[0]
 
-        if not rows:
-            print("✅ 所有论文已有embedding")
+        if limit:
+            total_pending = min(total_pending, limit)
+
+        if total_pending == 0:
+            print("✅ All papers already have embeddings")
             return
 
-        print(f"📄 待处理论文: {len(rows):,} 条")
+        print(f"📄 Pending papers: {total_pending:,}")
 
-        # 准备数据
-        batch_data = []
-        for row in rows:
-            # 组合标题和摘要作为输入
-            text = f"{row['title']}\n\n{row['abstract']}" if row['abstract'] else row['title']
-            batch_data.append((row['id'], text))
+        processed = 0
+        multi_chunk = 0
+        start_time = time.time()
 
-        # 分批次
-        batches = [
-            batch_data[i:i+BATCH_SIZE]
-            for i in range(0, len(batch_data), BATCH_SIZE)
-        ]
-
-        print(f"   分成 {len(batches)} 个批次")
-
-        # 并行处理
-        results = []
-        with Pool(processes=num_workers, initializer=init_worker) as pool:
-            with tqdm(total=len(batches), desc="生成embedding") as pbar:
-                for batch_result in pool.imap(process_batch, batches):
-                    results.extend(batch_result)
-                    pbar.update(1)
-
-        # 批量更新数据库
-        print("💾 写入数据库...")
-        await conn.executemany(
-            "UPDATE papers SET embedding = $2 WHERE id = $1",
-            results
-        )
-
-        print(f"✅ 完成！共生成 {len(results):,} 个embedding")
-
-    finally:
-        await conn.close()
-
-
-async def generate_embeddings_sequential(limit: int = 1000):
-    """
-    顺序生成embedding（内存友好，适合低配置机器）
-    """
-    print("🚀 顺序生成embedding（内存友好模式）...")
-
-    conn = await asyncpg.connect(**DB_CONFIG)
-
-    try:
-        # 加载模型
-        print(f"📥 加载模型: {MODEL_NAME}")
-        model = SentenceTransformer(MODEL_NAME, device='cpu')
-        model.eval()
-
-        # 获取需要生成embedding的论文
-        rows = await conn.fetch(
-            """
-            SELECT id, title, abstract
-            FROM papers
-            WHERE embedding IS NULL
-            LIMIT $1
-            """,
-            limit
-        )
-
-        if not rows:
-            print("✅ 所有论文已有embedding")
-            return
-
-        print(f"📄 待处理论文: {len(rows):,} 条")
-
-        updated = 0
-        with tqdm(total=len(rows), desc="生成embedding") as pbar:
-            for i in range(0, len(rows), BATCH_SIZE):
-                batch = rows[i:i+BATCH_SIZE]
-
-                # 准备文本
-                texts = []
-                for row in batch:
-                    text = f"{row['title']}\n\n{row['abstract']}" if row['abstract'] else row['title']
-                    texts.append(text.strip().replace('\n', ' ')[:3000])
-
-                # 生成embedding
-                with torch.no_grad():
-                    embeddings = model.encode(
-                        texts,
-                        batch_size=len(texts),
-                        show_progress_bar=False,
-                        convert_to_numpy=True
-                    )
-
-                # 更新数据库
-                values = [
-                    (row['id'], embeddings[j].tolist())
-                    for j, row in enumerate(batch)
-                ]
-                await conn.executemany(
-                    "UPDATE papers SET embedding = $2 WHERE id = $1",
-                    values
+        with tqdm(total=total_pending, desc="🧠 Encoding", unit="papers") as pbar:
+            while processed < total_pending:
+                # Fetch batch
+                remaining = min(BATCH_SIZE, total_pending - processed)
+                cursor.execute(
+                    "SELECT id, title, abstract FROM papers WHERE embedding IS NULL LIMIT %s",
+                    (remaining,),
                 )
+                rows = cursor.fetchall()
 
-                updated += len(batch)
-                pbar.update(len(batch))
+                if not rows:
+                    break
 
-        print(f"✅ 完成！共生成 {updated:,} 个embedding")
+                # Process batch
+                batch_results, batch_multi_chunk = process_batch(rows, model)
+                multi_chunk += batch_multi_chunk
+
+                # Bulk update using execute_values with parameterized query
+                # pgvector accepts array literals like [0.1, 0.2, ...]
+                execute_values(
+                    cursor,
+                    "UPDATE papers AS p SET embedding = v.embedding::vector FROM (VALUES %s) AS v(id, embedding) WHERE p.id = v.id",
+                    batch_results,
+                    template="(%s, %s::vector)",
+                    page_size=len(batch_results),
+                )
+                conn.commit()
+
+                processed += len(rows)
+                pbar.update(len(rows))
+
+        elapsed = time.time() - start_time
+        print("\n✅ Done!")
+        print(f"   Generated: {processed:,} embeddings")
+        print(f"   Multi-chunk: {multi_chunk:,} papers")
+        print(f"   Time: {elapsed / 60:.1f} min")
+        print(f"   Speed: {processed / elapsed:.1f} papers/sec")
 
     finally:
-        await conn.close()
+        cursor.close()
+        conn.close()
 
 
 def main():
-    print("=" * 50)
-    print("arXiv Embedding 生成工具")
-    print("=" * 50)
-
     import argparse
-    parser = argparse.ArgumentParser(description="生成论文embedding")
+
+    parser = argparse.ArgumentParser(description="Generate paper embeddings")
     parser.add_argument(
-        "-l", "--limit",
-        type=int,
-        default=1000,
-        help="最多处理多少条记录 (默认: 1000)"
-    )
-    parser.add_argument(
-        "-w", "--workers",
-        type=int,
-        default=None,
-        help="并行进程数 (默认: CPU核心数)"
-    )
-    parser.add_argument(
-        "--sequential",
-        action="store_true",
-        help="使用顺序模式（内存友好）"
+        "-l", "--limit", type=int, default=None, help="Max papers to process"
     )
     args = parser.parse_args()
 
-    if args.sequential:
-        asyncio.run(generate_embeddings_sequential(args.limit))
-    else:
-        asyncio.run(generate_embeddings_parallel(args.limit, args.workers))
+    generate_embeddings(args.limit)
 
 
 if __name__ == "__main__":
-    # Windows/macOS需要这行
-    mp.set_start_method('spawn', force=True)
     main()

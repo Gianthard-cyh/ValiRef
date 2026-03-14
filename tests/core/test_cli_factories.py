@@ -1,6 +1,7 @@
 """
 Unit tests for CLI factory functions with dependency injection.
 """
+
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -51,11 +52,11 @@ class TestCreateDetector:
         """Test create_detector with provided LLM."""
         mock_llm = MagicMock()
 
-        with patch("src.cli.AggregateSearch") as mock_search_cls:
+        with patch("src.cli.AggregateSearchFactory") as mock_factory:
             mock_search = MagicMock()
-            mock_search_cls.return_value = mock_search
+            mock_factory.create.return_value = mock_search
 
-            with patch.object(HallucinationDetector, '_get_tools', return_value=[]):
+            with patch.object(HallucinationDetector, "_get_tools", return_value=[]):
                 with patch("src.core.detector.create_agent"):
                     detector = create_detector(llm=mock_llm)
 
@@ -68,12 +69,14 @@ class TestCreateDetector:
             mock_llm = MagicMock()
             mock_create_llm.return_value = mock_llm
 
-            with patch("src.cli.AggregateSearch"):
-                with patch.object(HallucinationDetector, '_get_tools', return_value=[]):
+            with patch("src.cli.AggregateSearchFactory"):
+                with patch.object(HallucinationDetector, "_get_tools", return_value=[]):
                     with patch("src.core.detector.create_agent"):
                         create_detector()
 
-            mock_create_llm.assert_called_once_with(temperature=0.1)  # DETECTOR_TEMPERATURE
+            mock_create_llm.assert_called_once_with(
+                temperature=0.1
+            )  # DETECTOR_TEMPERATURE
 
 
 class TestCreatePipeline:
@@ -81,19 +84,21 @@ class TestCreatePipeline:
 
     def test_create_pipeline_assembles_dependencies(self):
         """Test create_pipeline correctly assembles all dependencies."""
-        with patch("src.cli.create_llm") as mock_create_llm, \
-             patch("src.cli.create_detector") as mock_create_detector:
-
+        with (
+            patch("src.cli.create_llm") as mock_create_llm,
+            patch("src.cli.create_detector") as mock_create_detector,
+        ):
             mock_llm = MagicMock()
             mock_create_llm.return_value = mock_llm
 
             mock_detector = MagicMock()
             mock_create_detector.return_value = mock_detector
 
-            with patch("src.cli.TextExtractor") as mock_text_extractor_cls, \
-                 patch("src.cli.PDFExtractor") as mock_pdf_extractor_cls, \
-                 patch("src.cli.ValidationPipeline") as mock_pipeline_cls:
-
+            with (
+                patch("src.cli.TextExtractor") as mock_text_extractor_cls,
+                patch("src.cli.PDFExtractor") as mock_pdf_extractor_cls,
+                patch("src.cli.ValidationPipeline") as mock_pipeline_cls,
+            ):
                 mock_text_extractor = MagicMock()
                 mock_pdf_extractor = MagicMock()
                 mock_pipeline = MagicMock()
@@ -107,7 +112,9 @@ class TestCreatePipeline:
                 # Verify dependencies were created
                 mock_create_llm.assert_called_once()
                 mock_text_extractor_cls.assert_called_once_with(llm=mock_llm)
-                mock_pdf_extractor_cls.assert_called_once_with(text_extractor=mock_text_extractor)
+                mock_pdf_extractor_cls.assert_called_once_with(
+                    text_extractor=mock_text_extractor
+                )
                 mock_create_detector.assert_called_once()
 
                 # Verify pipeline was created with correct dependencies
@@ -121,12 +128,13 @@ class TestCreatePipeline:
         """Test create_pipeline accepts callbacks."""
         mock_callback = MagicMock()
 
-        with patch("src.cli.create_llm") as mock_create_llm, \
-             patch("src.cli.create_detector") as mock_create_detector, \
-             patch("src.cli.TextExtractor"), \
-             patch("src.cli.PDFExtractor"), \
-             patch("src.cli.ValidationPipeline") as mock_pipeline_cls:
-
+        with (
+            patch("src.cli.create_llm") as mock_create_llm,
+            patch("src.cli.create_detector") as mock_create_detector,
+            patch("src.cli.TextExtractor"),
+            patch("src.cli.PDFExtractor"),
+            patch("src.cli.ValidationPipeline") as mock_pipeline_cls,
+        ):
             mock_llm = MagicMock()
             mock_create_llm.return_value = mock_llm
 
@@ -147,8 +155,8 @@ class TestDependencyInjectionE2E:
         # This demonstrates the power of DI - we can inject a custom LLM
         custom_llm = MagicMock()
 
-        with patch("src.cli.AggregateSearch"):
-            with patch.object(HallucinationDetector, '_get_tools', return_value=[]):
+        with patch("src.cli.AggregateSearchFactory"):
+            with patch.object(HallucinationDetector, "_get_tools", return_value=[]):
                 with patch("src.core.detector.create_agent"):
                     detector = HallucinationDetector(llm=custom_llm)
 
@@ -160,7 +168,7 @@ class TestDependencyInjectionE2E:
         mock_llm = MagicMock()
         mock_search = MagicMock()
 
-        with patch.object(HallucinationDetector, '_get_tools', return_value=[]):
+        with patch.object(HallucinationDetector, "_get_tools", return_value=[]):
             with patch("src.core.detector.create_agent"):
                 detector = HallucinationDetector(
                     llm=mock_llm,

@@ -11,7 +11,7 @@ from langchain_deepseek import ChatDeepSeek
 from src.core.pipeline import ValidationPipeline
 from src.core.detector import HallucinationDetector
 from src.core.extract import PDFExtractor, TextExtractor
-from src.core.tools import AggregateSearch
+from src.core.tools import AggregateSearchFactory
 from src.core.config import (
     DEEPSEEK_API_KEY,
     LLM_MODEL,
@@ -51,21 +51,27 @@ def create_llm(temperature: Optional[float] = None) -> ChatDeepSeek:
     )
 
 
-def create_detector(llm: Optional[ChatDeepSeek] = None) -> HallucinationDetector:
+def create_detector(
+    llm: Optional[ChatDeepSeek] = None,
+    search_mode: str = "local",
+) -> HallucinationDetector:
     """Factory function to create a HallucinationDetector with all dependencies."""
-    llm_instance = llm if llm is not None else create_llm(temperature=DETECTOR_TEMPERATURE)
-    search = AggregateSearch()
-    return HallucinationDetector(llm=llm_instance, search=search)
+    llm_instance = (
+        llm if llm is not None else create_llm(temperature=DETECTOR_TEMPERATURE)
+    )
+    aggregate_search = AggregateSearchFactory.create(search_mode)
+    return HallucinationDetector(llm=llm_instance, search=aggregate_search)
 
 
 def create_pipeline(
     callbacks: Optional[list] = None,
+    search_mode: str = "local",
 ) -> ValidationPipeline:
     """Factory function to create a ValidationPipeline with all dependencies."""
     llm = create_llm()
     text_extractor = TextExtractor(llm=llm)
     pdf_extractor = PDFExtractor(text_extractor=text_extractor)
-    detector = create_detector()
+    detector = create_detector(llm=llm, search_mode=search_mode)
 
     return ValidationPipeline(
         extractor=pdf_extractor,
@@ -89,6 +95,12 @@ def validate(
     show_metrics: bool = typer.Option(
         True, "--metrics/--no-metrics", help="Show real-time tool metrics"
     ),
+    search_mode: str = typer.Option(
+        "local",
+        "--search-mode",
+        "-s",
+        help="Search mode: 'local' (default, uses ParadeDB) or 'online' (uses external APIs)",
+    ),
 ):
     """
     Validate references in a PDF file.
@@ -111,14 +123,18 @@ def validate(
         raise typer.Exit(code=1)
 
     async def run_pipeline():
-        callback = CliCallback(console, show_metrics=show_metrics) if not verbose else None
+        callback = (
+            CliCallback(console, show_metrics=show_metrics) if not verbose else None
+        )
         pipeline = create_pipeline(
-            callbacks=[callback] if callback else []
+            callbacks=[callback] if callback else [],
+            search_mode=search_mode,
         )
         if verbose:
             console.print(
                 f"[bold green]Starting validation for:[/bold green] {path.name}"
             )
+            console.print(f"[bold blue]Search mode:[/bold blue] {search_mode}")
 
         return await pipeline.process_pdf(str(path), max_workers=max_workers)
 
@@ -126,7 +142,7 @@ def validate(
         results = asyncio.run(run_pipeline())
 
         # 添加工具统计到结果（如果有callback且启用了metrics）
-        if 'callback' in dir() and callback and callback.metrics:
+        if "callback" in dir() and callback and callback.metrics:
             results["tool_stats"] = callback.metrics.get_summary()
 
         if output_json:
@@ -255,6 +271,15 @@ def benchmark(
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Enable verbose output"
     ),
+    show_metrics: bool = typer.Option(
+        True, "--metrics/--no-metrics", help="Show real-time tool call metrics"
+    ),
+    search_mode: str = typer.Option(
+        "local",
+        "--search-mode",
+        "-s",
+        help="Search mode: 'local' (default, uses ParadeDB) or 'online' (uses external APIs)",
+    ),
 ):
     """
     Run benchmark on a dataset to evaluate hallucination detection performance.
@@ -278,26 +303,29 @@ def benchmark(
         logging.getLogger().setLevel(logging.INFO)
 
     async def run_benchmark():
-        detector = create_detector()
+        detector = create_detector(search_mode=search_mode)
         runner = BenchmarkRunner(detector)
 
         if verbose:
             console.print(
                 f"[bold green]Starting benchmark with {workers} workers...[/bold green]"
             )
+            console.print(f"[bold blue]Search mode:[/bold blue] {search_mode}")
 
         return await runner.run(
             dataset_path=str(path),
             max_workers=workers,
             limit=limit,
             verbose=True,  # Always show progress bar for benchmark
+            show_metrics=show_metrics,
         )
 
     try:
         result = asyncio.run(run_benchmark())
 
         # Print results
-        runner = BenchmarkRunner(create_detector())
+        detector = create_detector(search_mode=search_mode)
+        runner = BenchmarkRunner(detector)
         runner.print_results(result)
 
         # Save to file if output specified
@@ -317,7 +345,9 @@ def benchmark(
 
 @app.command()
 def cache(
-    action: str = typer.Argument(..., help="Action to perform: 'clear', 'stats', or 'show'"),
+    action: str = typer.Argument(
+        ..., help="Action to perform: 'clear', 'stats', or 'show'"
+    ),
 ):
     """
     Manage search result cache.

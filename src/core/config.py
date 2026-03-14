@@ -9,6 +9,13 @@ DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 SERPAPI_API_KEY = os.environ.get("SERPAPI_API_KEY")
 SEMANTIC_SCHOLAR_API_KEY = os.environ.get("SEMANTIC_SCHOLAR_API_KEY")
 
+# Database Configuration
+DB_HOST = os.environ.get("DB_HOST", "127.0.0.1")
+DB_PORT = int(os.environ.get("DB_PORT", "5432"))
+DB_USER = os.environ.get("DB_USER", "valiref")
+DB_PASSWORD = os.environ.get("DB_PASSWORD", "valiref_secret")
+DB_NAME = os.environ.get("DB_NAME", "arxiv_db")
+
 # Observability (LangSmith)
 LANGCHAIN_TRACING_V2 = os.environ.get("LANGCHAIN_TRACING_V2", "false").lower() == "true"
 LANGCHAIN_API_KEY = os.environ.get("LANGCHAIN_API_KEY")

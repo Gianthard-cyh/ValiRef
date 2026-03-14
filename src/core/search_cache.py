@@ -4,7 +4,6 @@ Simple file-based cache for search results.
 
 import hashlib
 import json
-import os
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -109,7 +108,8 @@ class SearchCache:
         """Get cache statistics."""
         now = time.time()
         valid = sum(
-            1 for entry in self._cache.values()
+            1
+            for entry in self._cache.values()
             if now - entry.get("timestamp", 0) <= self.ttl_seconds
         )
         return {

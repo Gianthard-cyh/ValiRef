@@ -9,7 +9,6 @@ from rich.progress import (
     TaskID,
     TimeRemainingColumn,
 )
-from rich import box
 from src.core.callbacks import ValidationCallback
 from src.core.tool_monitor import ToolMetricsCollector
 from src.bench.schema import Paper
@@ -38,15 +37,13 @@ class CliCallback(ValidationCallback):
         """启动Live显示和进度条"""
         if self.show_metrics:
             # Create metrics collector without tool instances (signal-based tracking)
-            self.metrics = ToolMetricsCollector(
-                on_update=self._on_metrics_update
-            )
+            self.metrics = ToolMetricsCollector(on_update=self._on_metrics_update)
             # 启动Live显示工具统计
             self.live = Live(
                 self.metrics.get_stats_table(),
                 console=self.console,
                 refresh_per_second=2,
-                transient=True
+                transient=True,
             )
             self.live.start()
 

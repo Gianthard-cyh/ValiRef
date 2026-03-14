@@ -20,52 +20,84 @@ from rich.panel import Panel
 from rich import box
 
 from .schema import Paper
-from ..core.detector import HallucinationDetector, ValidationResult
 from ..core.logger import logger
 from ..core.tool_monitor import ToolMetricsCollector
 
+# TYPE_CHECKING imports to avoid circular imports
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from ..core.detector import HallucinationDetector, ValidationResult
+
 
 @dataclass
-class Metrics:
-    """Evaluation metrics for benchmark results."""
+class MultiClassMetrics:
+    """Multi-class classification metrics for hallucination type detection."""
+
+    # Confusion matrix (actual class -> predicted class -> count)
+    confusion_matrix: Dict[str, Dict[str, int]] = field(default_factory=dict)
+
+    # Per-class Precision/Recall/F1
+    per_class_precision: Dict[str, float] = field(default_factory=dict)
+    per_class_recall: Dict[str, float] = field(default_factory=dict)
+    per_class_f1: Dict[str, float] = field(default_factory=dict)
+    per_class_support: Dict[str, int] = field(default_factory=dict)
+
+    # Macro Average - each class equally important
+    macro_precision: float = 0.0
+    macro_recall: float = 0.0
+    macro_f1: float = 0.0
+
+    # Micro Average - each sample equally important
+    micro_precision: float = 0.0
+    micro_recall: float = 0.0
+    micro_f1: float = 0.0
+
+    # Weighted Average - weighted by class sample count
+    weighted_precision: float = 0.0
+    weighted_recall: float = 0.0
+    weighted_f1: float = 0.0
+
+    # Overall accuracy
     accuracy: float = 0.0
-    precision: float = 0.0
-    recall: float = 0.0
-    f1_score: float = 0.0
     total_samples: int = 0
-    true_positives: int = 0
-    true_negatives: int = 0
-    false_positives: int = 0
-    false_negatives: int = 0
 
     def to_dict(self) -> Dict[str, Any]:
         return {
+            "confusion_matrix": self.confusion_matrix,
+            "per_class_precision": self.per_class_precision,
+            "per_class_recall": self.per_class_recall,
+            "per_class_f1": self.per_class_f1,
+            "per_class_support": self.per_class_support,
+            "macro_precision": self.macro_precision,
+            "macro_recall": self.macro_recall,
+            "macro_f1": self.macro_f1,
+            "micro_precision": self.micro_precision,
+            "micro_recall": self.micro_recall,
+            "micro_f1": self.micro_f1,
+            "weighted_precision": self.weighted_precision,
+            "weighted_recall": self.weighted_recall,
+            "weighted_f1": self.weighted_f1,
             "accuracy": self.accuracy,
-            "precision": self.precision,
-            "recall": self.recall,
-            "f1_score": self.f1_score,
             "total_samples": self.total_samples,
-            "true_positives": self.true_positives,
-            "true_negatives": self.true_negatives,
-            "false_positives": self.false_positives,
-            "false_negatives": self.false_negatives,
         }
 
 
 @dataclass
 class SampleResult:
     """Result for a single sample."""
+
     paper: Paper
-    prediction: ValidationResult
-    ground_truth: bool  # True if hallucinated, False if real
-    correct: bool
+    prediction: "ValidationResult"  # Forward reference to avoid circular import
+    ground_truth_type: str  # e.g., "Real", "Fabrication", "AttributionError", etc.
+    correct: bool  # prediction.hallucination_type == ground_truth_type
 
 
 @dataclass
 class BenchmarkResult:
     """Complete benchmark results."""
-    metrics: Metrics
-    per_type_metrics: Dict[str, Metrics]
+
+    metrics: MultiClassMetrics  # Multi-class metrics
+    per_type_metrics: Dict[str, MultiClassMetrics]  # Per-class metrics
     samples: List[SampleResult]
     duration_seconds: float
     timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
@@ -82,7 +114,7 @@ class BenchmarkResult:
                 {
                     "paper": s.paper.model_dump(),
                     "prediction": s.prediction.model_dump(),
-                    "ground_truth": s.ground_truth,
+                    "ground_truth_type": s.ground_truth_type,
                     "correct": s.correct,
                 }
                 for s in self.samples
@@ -93,7 +125,7 @@ class BenchmarkResult:
 class BenchmarkRunner:
     """Runner for benchmarking hallucination detection performance."""
 
-    def __init__(self, detector: HallucinationDetector):
+    def __init__(self, detector: "HallucinationDetector"):
         self.detector = detector
         self.console = Console()
 
@@ -134,46 +166,104 @@ class BenchmarkRunner:
         logger.info(f"Loaded {len(papers)} papers from {path}")
         return papers
 
-    def _is_hallucinated(self, paper: Paper) -> bool:
-        """Determine if a paper is hallucinated based on its type."""
-        # Real papers have no hallucination_type or it's empty/None
+    def _get_ground_truth_type(self, paper: Paper) -> str:
+        """Determine the ground truth hallucination type."""
         if not paper.hallucination_type:
-            return False
-        # Any non-empty hallucination_type means it's a hallucinated sample
-        return True
+            return "Real"
+        # Normalize case variations
+        type_mapping = {
+            "fabrication": "Fabrication",
+            "attributionerror": "AttributionError",
+            "attribution_error": "AttributionError",
+            "irrelevance": "Irrelevance",
+            "counterfactual": "Counterfactual",
+        }
+        normalized = paper.hallucination_type.strip()
+        return type_mapping.get(normalized.lower(), normalized)
 
-    def _calculate_metrics(
-        self, predictions: List[bool], ground_truth: List[bool]
-    ) -> Metrics:
-        """Calculate evaluation metrics from predictions and ground truth."""
-        if len(predictions) != len(ground_truth):
-            raise ValueError("Predictions and ground truth must have same length")
+    def _calculate_multiclass_metrics(
+        self,
+        predicted_types: List[str],
+        ground_truth_types: List[str]
+    ) -> MultiClassMetrics:
+        """
+        Calculate multi-class metrics (Macro/Micro/Weighted Average).
 
-        tp = sum(1 for p, g in zip(predictions, ground_truth) if p and g)
-        tn = sum(1 for p, g in zip(predictions, ground_truth) if not p and not g)
-        fp = sum(1 for p, g in zip(predictions, ground_truth) if p and not g)
-        fn = sum(1 for p, g in zip(predictions, ground_truth) if not p and g)
+        Classes: ['Real', 'Fabrication', 'AttributionError', 'Irrelevance', 'Counterfactual']
+        """
+        classes = ['Real', 'Fabrication', 'AttributionError', 'Irrelevance', 'Counterfactual']
 
-        total = len(predictions)
-        accuracy = (tp + tn) / total if total > 0 else 0.0
-        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
-        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-        f1 = (
-            2 * (precision * recall) / (precision + recall)
-            if (precision + recall) > 0
-            else 0.0
-        )
+        # Build confusion matrix
+        confusion = {c: {c2: 0 for c2 in classes} for c in classes}
+        for pred, true in zip(predicted_types, ground_truth_types):
+            # Handle unknown classes
+            if pred not in classes:
+                pred = "Fabrication"  # Default fallback
+            if true not in classes:
+                true = "Real"  # Default fallback
+            confusion[true][pred] += 1
 
-        return Metrics(
+        # Calculate per-class Precision, Recall, F1
+        per_class_precision = {}
+        per_class_recall = {}
+        per_class_f1 = {}
+        per_class_support = {}
+
+        for c in classes:
+            tp = confusion[c][c]  # True positives
+            fp = sum(confusion[other][c] for other in classes if other != c)  # False positives
+            fn = sum(confusion[c][other] for other in classes if other != c)  # False negatives
+            support = sum(confusion[c].values())  # Actual samples for this class
+
+            precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+            recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+            f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+
+            per_class_precision[c] = precision
+            per_class_recall[c] = recall
+            per_class_f1[c] = f1
+            per_class_support[c] = support
+
+        # Calculate Macro Average (simple average)
+        macro_precision = sum(per_class_precision.values()) / len(classes)
+        macro_recall = sum(per_class_recall.values()) / len(classes)
+        macro_f1 = sum(per_class_f1.values()) / len(classes)
+
+        # Calculate Micro Average (based on total TP/FP/FN)
+        total_tp = sum(confusion[c][c] for c in classes)
+        total_fp = sum(sum(confusion[true][pred] for true in classes if true != pred) for pred in classes)
+        total_fn = sum(sum(confusion[true][pred] for pred in classes if pred != true) for true in classes)
+
+        micro_precision = total_tp / (total_tp + total_fp) if (total_tp + total_fp) > 0 else 0.0
+        micro_recall = total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else 0.0
+        micro_f1 = 2 * micro_precision * micro_recall / (micro_precision + micro_recall) if (micro_precision + micro_recall) > 0 else 0.0
+
+        # Calculate Weighted Average (weighted by support)
+        total = sum(per_class_support.values())
+        weighted_precision = sum(per_class_precision[c] * per_class_support[c] for c in classes) / total if total > 0 else 0.0
+        weighted_recall = sum(per_class_recall[c] * per_class_support[c] for c in classes) / total if total > 0 else 0.0
+        weighted_f1 = sum(per_class_f1[c] * per_class_support[c] for c in classes) / total if total > 0 else 0.0
+
+        # Overall accuracy
+        accuracy = total_tp / total if total > 0 else 0.0
+
+        return MultiClassMetrics(
+            confusion_matrix=confusion,
+            per_class_precision=per_class_precision,
+            per_class_recall=per_class_recall,
+            per_class_f1=per_class_f1,
+            per_class_support=per_class_support,
+            macro_precision=macro_precision,
+            macro_recall=macro_recall,
+            macro_f1=macro_f1,
+            micro_precision=micro_precision,
+            micro_recall=micro_recall,
+            micro_f1=micro_f1,
+            weighted_precision=weighted_precision,
+            weighted_recall=weighted_recall,
+            weighted_f1=weighted_f1,
             accuracy=accuracy,
-            precision=precision,
-            recall=recall,
-            f1_score=f1,
             total_samples=total,
-            true_positives=tp,
-            true_negatives=tn,
-            false_positives=fp,
-            false_negatives=fn,
         )
 
     async def run(
@@ -182,6 +272,7 @@ class BenchmarkRunner:
         max_workers: int = 5,
         limit: Optional[int] = None,
         verbose: bool = False,
+        show_metrics: bool = True,
     ) -> BenchmarkResult:
         """
         Run benchmark on the dataset.
@@ -191,6 +282,7 @@ class BenchmarkRunner:
             max_workers: Number of concurrent validation workers
             limit: Optional limit on number of samples to test
             verbose: Enable verbose output
+            show_metrics: Show real-time tool call metrics
 
         Returns:
             BenchmarkResult with metrics and sample results
@@ -207,8 +299,8 @@ class BenchmarkRunner:
             f"Running benchmark on {len(papers)} samples with {max_workers} workers"
         )
 
-        # Create tool metrics collector
-        metrics_collector = ToolMetricsCollector()
+        # Create tool metrics collector (only if show_metrics is True)
+        metrics_collector = ToolMetricsCollector() if show_metrics else None
 
         # Create progress bar
         progress = Progress(
@@ -231,45 +323,56 @@ class BenchmarkRunner:
 
             # Update display function
             def update_display():
-                # Combine progress and metrics table
-                metrics_table = metrics_collector.get_stats_table()
-                group = Group(
-                    progress,
-                    metrics_table if metrics_collector.get_summary()["total_calls"] > 0 else ""
-                )
+                # Combine progress and metrics table (only if metrics collector exists)
+                if metrics_collector:
+                    metrics_table = metrics_collector.get_stats_table()
+                    group = Group(
+                        progress,
+                        metrics_table
+                        if metrics_collector.get_summary()["total_calls"] > 0
+                        else "",
+                    )
+                else:
+                    group = progress
                 live.update(group)
 
-            # Set callback for metrics updates
-            metrics_collector._on_update = update_display
+            # Set callback for metrics updates (only if metrics collector exists)
+            if metrics_collector:
+                metrics_collector._on_update = update_display
 
             semaphore = asyncio.Semaphore(max_workers)
 
             async def validate_sample(paper: Paper) -> SampleResult:
-                ground_truth = self._is_hallucinated(paper)
+                # Local import to avoid circular dependency
+                from ..core.detector import ValidationResult
+
+                ground_truth_type = self._get_ground_truth_type(paper)
                 sample_start = time.time()
 
                 logger.info(f"[Benchmark] Starting validation: {paper.title[:50]}...")
 
                 try:
                     prediction = await self.detector.acheck_reference(paper)
-                    predicted_hallucination = prediction.is_hallucination
+                    # Ensure prediction has hallucination_type
+                    if not hasattr(prediction, 'hallucination_type') or not prediction.hallucination_type:
+                        # Derive from is_hallucination if needed
+                        prediction.hallucination_type = "Fabrication" if prediction.is_hallucination else "Real"
                 except Exception as e:
                     logger.error(f"[Benchmark] Error validating {paper.title}: {e}")
                     # Treat errors as hallucination detection failures
                     prediction = ValidationResult(
-                        is_hallucination=True,
+                        hallucination_type="Fabrication",
                         confidence=0.0,
                         reasoning=f"Validation error: {e}",
                         evidence=[],
                     )
-                    predicted_hallucination = True
 
                 elapsed = time.time() - sample_start
-                correct = predicted_hallucination == ground_truth
+                correct = prediction.hallucination_type == ground_truth_type
 
                 logger.info(
                     f"[Benchmark] Completed: {paper.title[:40]}... "
-                    f"({elapsed:.1f}s, correct={correct})"
+                    f"({elapsed:.1f}s, correct={correct}, pred={prediction.hallucination_type}, gt={ground_truth_type})"
                 )
 
                 progress.update(task, advance=1)
@@ -278,7 +381,7 @@ class BenchmarkRunner:
                 return SampleResult(
                     paper=paper,
                     prediction=prediction,
-                    ground_truth=ground_truth,
+                    ground_truth_type=ground_truth_type,
                     correct=correct,
                 )
 
@@ -301,24 +404,19 @@ class BenchmarkRunner:
 
         duration = time.time() - start_time
 
-        # Calculate overall metrics
-        predictions = [s.prediction.is_hallucination for s in samples]
-        ground_truths = [s.ground_truth for s in samples]
-        overall_metrics = self._calculate_metrics(predictions, ground_truths)
+        # Calculate multi-class metrics
+        predicted_types = [s.prediction.hallucination_type for s in samples]
+        ground_truth_types = [s.ground_truth_type for s in samples]
+        overall_metrics = self._calculate_multiclass_metrics(predicted_types, ground_truth_types)
 
         # Calculate per-type metrics
-        per_type_metrics: Dict[str, List[SampleResult]] = {}
-        for s in samples:
-            htype = s.paper.hallucination_type or "Real"
-            if htype not in per_type_metrics:
-                per_type_metrics[htype] = []
-            per_type_metrics[htype].append(s)
-
-        per_type_results: Dict[str, Metrics] = {}
-        for htype, type_samples in per_type_metrics.items():
-            type_preds = [s.prediction.is_hallucination for s in type_samples]
-            type_truth = [s.ground_truth for s in type_samples]
-            per_type_results[htype] = self._calculate_metrics(type_preds, type_truth)
+        per_type_results: Dict[str, MultiClassMetrics] = {}
+        for htype in ['Real', 'Fabrication', 'AttributionError', 'Irrelevance', 'Counterfactual']:
+            type_samples = [s for s in samples if s.ground_truth_type == htype]
+            if type_samples:
+                type_preds = [s.prediction.hallucination_type for s in type_samples]
+                type_truth = [s.ground_truth_type for s in type_samples]
+                per_type_results[htype] = self._calculate_multiclass_metrics(type_preds, type_truth)
 
         return BenchmarkResult(
             metrics=overall_metrics,
@@ -331,58 +429,98 @@ class BenchmarkRunner:
         """Print benchmark results in a formatted table."""
         self.console.print("\n[bold]Benchmark Results[/bold]\n")
 
-        # Overall metrics table
-        metrics_table = Table(
-            title="Overall Metrics",
+        # Per-class metrics table
+        mc = result.metrics
+        class_table = Table(
+            title="Per-Class Metrics",
             box=box.ROUNDED,
             show_header=True,
             header_style="bold magenta",
         )
-        metrics_table.add_column("Metric", style="cyan")
-        metrics_table.add_column("Value", justify="right", style="green")
+        class_table.add_column("Class", style="cyan")
+        class_table.add_column("Precision", justify="right")
+        class_table.add_column("Recall", justify="right")
+        class_table.add_column("F1", justify="right")
+        class_table.add_column("Support", justify="right")
 
-        m = result.metrics
-        metrics_table.add_row("Accuracy", f"{m.accuracy:.4f}")
-        metrics_table.add_row("Precision", f"{m.precision:.4f}")
-        metrics_table.add_row("Recall", f"{m.recall:.4f}")
-        metrics_table.add_row("F1 Score", f"{m.f1_score:.4f}")
-        metrics_table.add_row("Total Samples", str(m.total_samples))
-        metrics_table.add_row("True Positives", str(m.true_positives))
-        metrics_table.add_row("True Negatives", str(m.true_negatives))
-        metrics_table.add_row("False Positives", str(m.false_positives))
-        metrics_table.add_row("False Negatives", str(m.false_negatives))
-
-        self.console.print(metrics_table)
-        self.console.print()
-
-        # Per-type metrics table
-        if result.per_type_metrics:
-            type_table = Table(
-                title="Per-Hallucination-Type Metrics",
-                box=box.ROUNDED,
-                show_header=True,
-                header_style="bold magenta",
-            )
-            type_table.add_column("Type", style="cyan")
-            type_table.add_column("Accuracy", justify="right")
-            type_table.add_column("Precision", justify="right")
-            type_table.add_column("Recall", justify="right")
-            type_table.add_column("F1", justify="right")
-            type_table.add_column("Count", justify="right")
-
-            for htype, metrics in result.per_type_metrics.items():
-                style = "green" if htype == "Real" else "yellow"
-                type_table.add_row(
-                    f"[{style}]{htype}[/{style}]",
-                    f"{metrics.accuracy:.4f}",
-                    f"{metrics.precision:.4f}",
-                    f"{metrics.recall:.4f}",
-                    f"{metrics.f1_score:.4f}",
-                    str(metrics.total_samples),
+        for c in ['Real', 'Fabrication', 'AttributionError', 'Irrelevance', 'Counterfactual']:
+            style = "green" if c == "Real" else "yellow"
+            support = mc.per_class_support.get(c, 0)
+            if support > 0:  # Only show classes that appear in the dataset
+                class_table.add_row(
+                    f"[{style}]{c}[/{style}]",
+                    f"{mc.per_class_precision.get(c, 0):.4f}",
+                    f"{mc.per_class_recall.get(c, 0):.4f}",
+                    f"{mc.per_class_f1.get(c, 0):.4f}",
+                    str(support),
                 )
 
-            self.console.print(type_table)
-            self.console.print()
+        self.console.print(class_table)
+        self.console.print()
+
+        # Confusion matrix table
+        cm = mc.confusion_matrix
+        confusion_table = Table(
+            title="Confusion Matrix (Ground Truth → Predicted)",
+            box=box.ROUNDED,
+            show_header=True,
+            header_style="bold magenta",
+        )
+        confusion_table.add_column("GT \\ Pred", style="cyan")
+        for c in ['Real', 'Fabrication', 'AttributionError', 'Irrelevance', 'Counterfactual']:
+            confusion_table.add_column(c[:8], justify="right")  # Shortened names for display
+
+        for true_c in ['Real', 'Fabrication', 'AttributionError', 'Irrelevance', 'Counterfactual']:
+            row = [f"[bold]{true_c[:8]}[/bold]"]
+            for pred_c in ['Real', 'Fabrication', 'AttributionError', 'Irrelevance', 'Counterfactual']:
+                count = cm.get(true_c, {}).get(pred_c, 0)
+                # Highlight diagonal (correct predictions)
+                if true_c == pred_c:
+                    row.append(f"[green]{count}[/green]" if count > 0 else "0")
+                else:
+                    row.append(f"[red]{count}[/red]" if count > 0 else "0")
+            confusion_table.add_row(*row)
+
+        self.console.print(confusion_table)
+        self.console.print()
+
+        # Average metrics summary
+        avg_table = Table(
+            title="Average Metrics",
+            box=box.ROUNDED,
+            show_header=True,
+            header_style="bold magenta",
+        )
+        avg_table.add_column("Average Type", style="cyan")
+        avg_table.add_column("Precision", justify="right")
+        avg_table.add_column("Recall", justify="right")
+        avg_table.add_column("F1", justify="right")
+        avg_table.add_column("Accuracy", justify="right")
+
+        avg_table.add_row(
+            "Macro",
+            f"{mc.macro_precision:.4f}",
+            f"{mc.macro_recall:.4f}",
+            f"{mc.macro_f1:.4f}",
+            "-"
+        )
+        avg_table.add_row(
+            "Micro",
+            f"{mc.micro_precision:.4f}",
+            f"{mc.micro_recall:.4f}",
+            f"{mc.micro_f1:.4f}",
+            f"{mc.accuracy:.4f}"
+        )
+        avg_table.add_row(
+            "Weighted",
+            f"{mc.weighted_precision:.4f}",
+            f"{mc.weighted_recall:.4f}",
+            f"{mc.weighted_f1:.4f}",
+            "-"
+        )
+
+        self.console.print(avg_table)
+        self.console.print()
 
         # Summary panel
         correct = sum(1 for s in result.samples if s.correct)

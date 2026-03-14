@@ -1,13 +1,11 @@
--- pgvector 数据库初始化脚本（小批量测试版）
--- 适用于 4GB 内存服务器
+-- ParadeDB setup for ValiRef
+-- ParadeDB includes: pgvector + pg_search (BM25) + pg_analytics
 
--- 1. 创建扩展
-CREATE EXTENSION IF NOT EXISTS vector;
+-- 1. Enable pg_search for BM25
+CREATE EXTENSION IF NOT EXISTS pg_search;
 
--- 2. 创建论文表
-DROP TABLE IF EXISTS papers CASCADE;
-
-CREATE TABLE papers (
+-- 2. Create papers table
+CREATE TABLE IF NOT EXISTS papers (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
     authors TEXT[],
@@ -16,19 +14,33 @@ CREATE TABLE papers (
     year INTEGER,
     doi TEXT,
     journal_ref TEXT,
-    embedding VECTOR(384),  -- all-MiniLM-L6-v2 是384维
+    venue VARCHAR(500),  -- DBLP conference/journal name
+    source VARCHAR(20) DEFAULT 'arxiv',  -- 'arxiv' or 'dblp'
+    embedding VECTOR(384),
     created_at TIMESTAMP DEFAULT NOW()
 );
 
--- 3. 创建B-tree索引（用于元数据过滤）
-CREATE INDEX idx_papers_year ON papers(year);
-CREATE INDEX idx_papers_categories ON papers USING GIN(categories);
+-- 3. Create BM25 index for text search (includes title and abstract)
+-- Note: This will be created after data is loaded for better performance
+-- CREATE INDEX idx_papers_bm25 ON papers
+-- USING bm25(id, title, abstract)
+-- WITH (key_field='id');
 
--- 4. 创建全文搜索索引（可选，用于标题/摘要关键词搜索）
-CREATE INDEX idx_papers_title_abstract ON papers
-USING GIN(to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE(abstract, '')));
+-- 4. Standard indexes
+CREATE INDEX IF NOT EXISTS idx_papers_year ON papers(year);
+CREATE INDEX IF NOT EXISTS idx_papers_categories ON papers USING GIN(categories);
+CREATE INDEX IF NOT EXISTS idx_papers_source ON papers(source);
 
--- 注意：向量索引 (IVFFlat) 在数据导入完成后再创建，以提高导入速度
+-- 5. Vector index (create after data is loaded)
+-- CREATE INDEX idx_papers_embedding ON papers USING ivfflat (embedding vector_cosine_ops);
 
--- 5. 验证表结构
-\d papers
+-- 6. Helper function to rebuild BM25 index
+CREATE OR REPLACE FUNCTION rebuild_bm25_index()
+RETURNS void AS $$
+BEGIN
+    DROP INDEX IF EXISTS idx_papers_bm25;
+    CREATE INDEX idx_papers_bm25 ON papers
+    USING bm25(id, title, abstract)
+    WITH (key_field='id');
+END;
+$$ LANGUAGE plpgsql;

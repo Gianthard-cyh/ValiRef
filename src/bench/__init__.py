@@ -1,6 +1,6 @@
 from .schema import Paper, PaperList, Reference, ReferenceList
 from .dataset import BenchmarkDataset, BenchmarkDatasetFactory
-from .bench import BenchmarkRunner, BenchmarkResult, Metrics, SampleResult
+from .bench import BenchmarkRunner, BenchmarkResult, MultiClassMetrics, SampleResult
 
 __all__ = [
     "Paper",
@@ -11,6 +11,6 @@ __all__ = [
     "BenchmarkDatasetFactory",
     "BenchmarkRunner",
     "BenchmarkResult",
-    "Metrics",
+    "MultiClassMetrics",
     "SampleResult",
 ]

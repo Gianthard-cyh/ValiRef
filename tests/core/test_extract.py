@@ -1,12 +1,12 @@
 """
 Unit tests for src.core.extract module with dependency injection.
 """
+
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
-import fitz
 
 from src.core.extract import TextExtractor, PDFExtractor, Extractor
-from src.bench.schema import Paper, ReferenceList
+from src.bench.schema import Paper
 
 
 class TestTextExtractor:
@@ -49,7 +49,12 @@ class TestTextExtractor:
 
         # When prompt | structured is called, return mock_chain
         from langchain_core.prompts import ChatPromptTemplate
-        with patch.object(ChatPromptTemplate, 'from_template', return_value=MagicMock(__or__=MagicMock(return_value=mock_chain))):
+
+        with patch.object(
+            ChatPromptTemplate,
+            "from_template",
+            return_value=MagicMock(__or__=MagicMock(return_value=mock_chain)),
+        ):
             extractor = TextExtractor(llm=mock_llm)
 
             # Execute
@@ -85,7 +90,7 @@ class TestTextExtractor:
         extractor = TextExtractor(llm=mock_llm)
 
         # Mock the extract method directly
-        with patch.object(extractor, 'extract', new_callable=AsyncMock) as mock_extract:
+        with patch.object(extractor, "extract", new_callable=AsyncMock) as mock_extract:
             mock_extract.return_value = [
                 Paper(
                     source="reference",
@@ -120,17 +125,19 @@ class TestPDFExtractor:
     async def test_extract_delegates_to_text_extractor(self):
         """Test PDF.extract delegates to text_extractor.extract."""
         mock_text_extractor = MagicMock(spec=TextExtractor)
-        mock_text_extractor.extract = AsyncMock(return_value=[
-            Paper(
-                source="reference",
-                id="123",
-                title="Test Paper",
-                abstract="Abstract",
-                authors=["Author"],
-                published_date="2023",
-                url="http://example.com",
-            )
-        ])
+        mock_text_extractor.extract = AsyncMock(
+            return_value=[
+                Paper(
+                    source="reference",
+                    id="123",
+                    title="Test Paper",
+                    abstract="Abstract",
+                    authors=["Author"],
+                    published_date="2023",
+                    url="http://example.com",
+                )
+            ]
+        )
 
         extractor = PDFExtractor(text_extractor=mock_text_extractor)
 
@@ -170,7 +177,9 @@ class TestPDFExtractor:
     async def test_extract_handles_errors_gracefully(self):
         """Test extract handles errors gracefully."""
         mock_text_extractor = MagicMock(spec=TextExtractor)
-        mock_text_extractor.extract = AsyncMock(side_effect=Exception("Extraction error"))
+        mock_text_extractor.extract = AsyncMock(
+            side_effect=Exception("Extraction error")
+        )
 
         extractor = PDFExtractor(text_extractor=mock_text_extractor)
 
@@ -196,6 +205,7 @@ class TestExtractorAbstract:
 
     def test_subclass_must_implement(self):
         """Test that subclasses must implement abstract methods."""
+
         class IncompleteExtractor(Extractor):
             pass
 

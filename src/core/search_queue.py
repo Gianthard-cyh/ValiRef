@@ -21,6 +21,7 @@ from .logger import logger
 @dataclass
 class SearchTask:
     """Task object representing a search request."""
+
     task_id: str
     query: str
     limit: int
@@ -35,9 +36,10 @@ class SearchTask:
 
 class CircuitState(Enum):
     """Circuit breaker states."""
-    CLOSED = auto()      # Normal operation
-    OPEN = auto()        # Circuit is open (failing fast)
-    HALF_OPEN = auto()   # Testing if service recovered
+
+    CLOSED = auto()  # Normal operation
+    OPEN = auto()  # Circuit is open (failing fast)
+    HALF_OPEN = auto()  # Testing if service recovered
 
 
 class CircuitBreaker:
@@ -83,11 +85,15 @@ class CircuitBreaker:
 
             if self._state == CircuitState.OPEN:
                 # Check if recovery timeout has passed
-                if self._last_failure_time and \
-                   (time.time() - self._last_failure_time) >= self.recovery_timeout:
+                if (
+                    self._last_failure_time
+                    and (time.time() - self._last_failure_time) >= self.recovery_timeout
+                ):
                     self._state = CircuitState.HALF_OPEN
                     self._half_open_calls = 0
-                    logger.info(f"[{self.name}] Circuit breaker entering HALF_OPEN state")
+                    logger.info(
+                        f"[{self.name}] Circuit breaker entering HALF_OPEN state"
+                    )
                     return True
                 return False
 
@@ -162,6 +168,7 @@ class CircuitBreaker:
 
 class CircuitBreakerOpen(Exception):
     """Raised when circuit breaker is open."""
+
     pass
 
 
@@ -212,10 +219,7 @@ class TokenBucket:
                 elapsed = now - self._last_update
 
                 # Add tokens based on elapsed time
-                self._tokens = min(
-                    self.burst_size,
-                    self._tokens + elapsed * self.rate
-                )
+                self._tokens = min(self.burst_size, self._tokens + elapsed * self.rate)
                 self._last_update = now
 
                 if self._tokens >= tokens:
@@ -234,8 +238,7 @@ class TokenBucket:
                 async with self._lock:
                     actual_elapsed = time.monotonic() - now
                     self._tokens = min(
-                        self.burst_size,
-                        self._tokens + actual_elapsed * self.rate
+                        self.burst_size, self._tokens + actual_elapsed * self.rate
                     )
                     self._last_update = time.monotonic()
                 raise
@@ -283,8 +286,7 @@ class ToolRequestQueue:
         """
         self.tool_name = tool_name
         self.token_bucket = TokenBucket(
-            rate=token_bucket_rate,
-            burst_size=token_bucket_burst
+            rate=token_bucket_rate, burst_size=token_bucket_burst
         )
         self.circuit_breaker = CircuitBreaker(
             name=tool_name,
@@ -296,9 +298,7 @@ class ToolRequestQueue:
         self._lock = asyncio.Lock()
 
     async def execute(
-        self,
-        task: SearchTask,
-        execute_fn: Callable[[SearchTask], Any]
+        self, task: SearchTask, execute_fn: Callable[[SearchTask], Any]
     ) -> Any:
         """
         Execute a task with rate limiting and circuit breaker protection.
