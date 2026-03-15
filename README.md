@@ -44,7 +44,7 @@ ValiRef is an intelligent tool designed to detect **hallucinated citations** in 
 - 📊 **Rich CLI Output** - Beautiful terminal interface with progress bars, real-time metrics, and detailed reports
 - 📈 **Benchmark Suite** - Built-in dataset generation and evaluation framework
 - 🛡️ **Resilient API Handling** - Token bucket rate limiting + circuit breaker pattern for reliable external API calls
-- 🎯 **High Accuracy** - 72%+ accuracy on 100-sample benchmark with confidence scoring and detailed reasoning
+- 🎯 **High Accuracy** - 88%+ accuracy on 1000-sample benchmark with confidence scoring and detailed reasoning
 
 ---
 
@@ -209,26 +209,27 @@ ValiRef includes a comprehensive benchmark suite for evaluating hallucination de
 
 ### Performance Results
 
-On a 100-sample mixed dataset:
+On a 1000-sample mixed dataset (local search mode):
 
 | Metric | Value |
 |--------|-------|
-| **Accuracy** | 72.0% |
-| **Precision** | 1.0000 |
-| **Recall** | 0.2800 (Counterfactual) / 1.0000 (Fabrication) |
-| **F1 Score** | 0.4375 (Counterfactual) / 1.0000 (Fabrication) |
-| **Throughput** | ~0.09 samples/sec |
-| **Duration** | ~18 min (100 samples) |
+| **Accuracy** | 88.1% |
+| **Macro Precision** | 0.9037 |
+| **Macro Recall** | 0.8748 |
+| **Macro F1** | 0.8622 |
+| **Weighted F1** | 0.8659 |
+| **Throughput** | ~1.01 samples/sec |
+| **Duration** | ~16.5 min (1000 samples) |
 
 ### Per-Type Performance
 
-| Hallucination Type | Accuracy | Precision | Recall | F1 Score | Samples |
-|-------------------|----------|-----------|--------|----------|---------|
-| Fabrication | 100% | 1.0000 | 1.0000 | 1.0000 | 19 |
-| AttributionError | 100% | 1.0000 | 1.0000 | 1.0000 | 19 |
-| Irrelevance | 74% | 1.0000 | 0.7368 | 0.8485 | 19 |
-| Counterfactual | 28% | 1.0000 | 0.2800 | 0.4375 | 25 |
-| Real Papers | 72% | 0.0000 | 0.0000 | 0.0000 | 18 |
+| Hallucination Type | Precision | Recall | F1 Score | Support |
+|-------------------|-----------|--------|----------|---------|
+| Real | 0.7528 | 0.9710 | 0.8481 | 207 |
+| Fabrication | 0.9509 | 1.0000 | 0.9748 | 213 |
+| AttributionError | 0.9849 | 0.9899 | 0.9874 | 198 |
+| Irrelevance | 0.8297 | 0.9845 | 0.9005 | 193 |
+| Counterfactual | 1.0000 | 0.4286 | 0.6000 | 189 |
 
 ### Generate Benchmark Dataset
 
