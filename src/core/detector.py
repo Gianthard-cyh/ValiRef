@@ -73,16 +73,19 @@ class HallucinationDetector:
 
     def _get_tools(self) -> List[StructuredTool]:
         """Initialize and return the list of tools available to the agent."""
+        # Get description from aggregate_search_instance if available
+        description = getattr(
+            self.aggregate_search_instance,
+            'get_tool_description',
+            lambda: "Search for papers matching the query."
+        )()
+
         return [
             StructuredTool.from_function(
                 func=None,
                 coroutine=self.aggregate_search_instance.asearch,
                 name="aggregate_search",
-                description=(
-                    "Search multiple sources concurrently for papers matching the query. "
-                    "Sources can be a list of: 'arxiv', 'openreview', 'openalex', 'duckduckgo'. "
-                    "Returns a combined list of paper details."
-                ),
+                description=description,
             ),
             StructuredTool.from_function(
                 func=self._create_validation_result,

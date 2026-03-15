@@ -24,6 +24,13 @@ class OnlineAggregateSearch:
             "duckduckgo": DuckDuckGoSearch(),
         }
 
+    def get_tool_description(self) -> str:
+        return (
+            "Search multiple online sources concurrently for papers matching the query. "
+            "Sources can be a list of: 'arxiv', 'openreview', 'openalex', 'duckduckgo'. "
+            "Returns a combined list of paper details."
+        )
+
     async def asearch(
         self, query: str, sources: list[str] = None, limit: int = 5
     ) -> list[dict]:

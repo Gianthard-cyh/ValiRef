@@ -22,7 +22,7 @@ from src.core.config import (
     LLM_MAX_RETRIES,
 )
 from src.core.search_cache import get_cache, clear_cache
-from src.bench import BenchmarkRunner
+from src.bench import BenchmarkRunner, print_results
 from src.cli_callbacks import CliCallback
 import logging
 import asyncio
@@ -324,9 +324,7 @@ def benchmark(
         result = asyncio.run(run_benchmark())
 
         # Print results
-        detector = create_detector(search_mode=search_mode)
-        runner = BenchmarkRunner(detector)
-        runner.print_results(result)
+        print_results(result)
 
         # Save to file if output specified
         if output:

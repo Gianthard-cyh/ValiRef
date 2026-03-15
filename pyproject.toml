@@ -30,6 +30,7 @@ dependencies = [
     "langchain>=1.2.10",
     "langchain-deepseek>=1.0.1",
     "langgraph>=1.0.8",
+    "langsmith>=0.7.1",
     "openreview-py>=1.57.0",
     "psycopg2-binary>=2.9.11",
     "pymupdf>=1.27.1",

@@ -13,6 +13,13 @@ class LocalAggregateSearch:
     def __init__(self):
         self.tool = LocalDBSearch()
 
+    def get_tool_description(self) -> str:
+        return (
+            "Search local ParadeDB database for papers matching the query. "
+            "Returns results from local_db_arxiv, local_db_dblp sources. "
+            "Local database results are authoritative and indicate the paper exists."
+        )
+
     async def asearch(
         self, query: str, sources: list[str] = None, limit: int = 5
     ) -> list[dict]:
