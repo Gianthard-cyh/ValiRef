@@ -174,8 +174,8 @@ class TestPDFExtractor:
         assert mock_text_extractor.extract.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_extract_handles_errors_gracefully(self):
-        """Test extract handles errors gracefully."""
+    async def test_extract_propagates_errors(self):
+        """Test extract propagates errors - not silently caught."""
         mock_text_extractor = MagicMock(spec=TextExtractor)
         mock_text_extractor.extract = AsyncMock(
             side_effect=Exception("Extraction error")
@@ -189,10 +189,9 @@ class TestPDFExtractor:
         mock_doc.__iter__ = MagicMock(return_value=iter([mock_page]))
 
         with patch("fitz.open", return_value=mock_doc):
-            # extract_batch catches exceptions and returns empty list
-            results = await extractor.extract_batch(["/path/1.pdf"])
-
-        assert results == [[]]
+            # Errors should propagate, not be silently caught
+            with pytest.raises(Exception, match="Extraction error"):
+                await extractor.extract_batch(["/path/1.pdf"])
 
 
 class TestExtractorAbstract:

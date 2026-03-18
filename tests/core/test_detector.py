@@ -227,6 +227,16 @@ class TestValidationResult:
         )
         assert counter.is_hallucination is True
 
+    def test_validation_result_unknown_type(self):
+        """Test ValidationResult handles Unknown type for system errors."""
+        unknown = ValidationResult(
+            hallucination_type="Unknown",
+            confidence=0.0,
+            reasoning="Validation system error occurred",
+        )
+        assert unknown.hallucination_type == "Unknown"
+        assert unknown.is_hallucination is True  # Treated as error state
+
     def test_validation_result_default_evidence(self):
         """Test ValidationResult creates empty evidence list by default."""
         result = ValidationResult(

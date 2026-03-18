@@ -9,7 +9,7 @@ class TestSearchTools:
     Test cases for search tools in src.core.tools.
     """
 
-    @patch("src.core.tools.httpx.AsyncClient")
+    @patch("src.core.search.sources.arxiv.httpx.AsyncClient")
     def test_arxiv_search(self, mock_client_cls):
         """
         Test ArxivSearch tool with async httpx.
@@ -52,7 +52,7 @@ class TestSearchTools:
 
         asyncio.run(run_test())
 
-    @patch("src.core.tools.httpx.AsyncClient")
+    @patch("src.core.search.sources.arxiv.httpx.AsyncClient")
     def test_arxiv_search_failure(self, mock_client_cls):
         """
         Test ArxivSearch failure handling.
@@ -74,7 +74,7 @@ class TestSearchTools:
 
         asyncio.run(run_test())
 
-    @patch("src.core.tools.httpx.AsyncClient")
+    @patch("src.core.search.sources.openreview.httpx.AsyncClient")
     def test_openreview_search(self, mock_client_cls):
         """
         Test OpenReviewSearch tool with async httpx.
@@ -116,7 +116,7 @@ class TestSearchTools:
 
         asyncio.run(run_test())
 
-    @patch("src.core.tools.httpx.AsyncClient")
+    @patch("src.core.search.sources.openalex.httpx.AsyncClient")
     def test_openalex_search(self, mock_client_cls):
         """
         Test OpenAlexSearch tool with async httpx.
@@ -164,7 +164,7 @@ class TestSearchTools:
 
         asyncio.run(run_test())
 
-    @patch("src.core.tools.httpx.AsyncClient")
+    @patch("src.core.search.sources.openalex.httpx.AsyncClient")
     def test_openalex_search_failure(self, mock_client_cls):
         """
         Test OpenAlexSearch failure handling.
