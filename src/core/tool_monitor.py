@@ -8,7 +8,7 @@ from blinker import signal
 import threading
 import time
 
-# 定义信号
+# Define signals
 tool_call_started = signal("tool-call-started")
 tool_call_ended = signal("tool-call-ended")
 
@@ -18,7 +18,7 @@ ACTIVE_CALL_MAX_AGE_SECONDS = 300  # 5 minutes
 
 @dataclass
 class ToolStats:
-    """工具统计聚合"""
+    """Tool statistics aggregation."""
 
     tool_name: str
     total_calls: int = 0
@@ -29,9 +29,7 @@ class ToolStats:
     min_duration_ms: float = float("inf")
     total_results: int = 0
     errors: Dict[str, int] = field(default_factory=dict)
-    # Real-time tracking via signals
     active_tasks: int = 0
-    # Call history for rate calculation (timestamps of calls in the last 60s)
     _call_history: deque = field(default_factory=lambda: deque(maxlen=1000))
 
     @property
@@ -75,28 +73,28 @@ class ToolStats:
 
 # Circuit breaker state display mapping
 CIRCUIT_STATE_DISPLAY = {
-    "CLOSED": ("✅ 正常", "green"),
-    "HALF_OPEN": ("⚠️ 恢复中", "yellow"),
-    "OPEN": ("❌ 已熔断", "red"),
+    "CLOSED": ("Normal", "green"),
+    "HALF_OPEN": ("Recovering", "yellow"),
+    "OPEN": ("Open", "red"),
 }
 
 
 def format_circuit_state(state: str) -> tuple[str, str]:
     """Format circuit breaker state for display."""
-    return CIRCUIT_STATE_DISPLAY.get(state, (f"❓ {state}", "white"))
+    return CIRCUIT_STATE_DISPLAY.get(state, (state, "white"))
 
 
 class ToolMetricsCollector:
-    """工具指标收集器 - 基于信号的状态追踪，无需工具实例引用"""
+    """Tool metrics collector - signal-based state tracking without tool instance references."""
 
     def __init__(self, on_update: Optional[Callable] = None):
         self._lock = threading.Lock()
         self._stats: Dict[str, ToolStats] = {}
-        self._active_calls: Dict[str, dict] = {}  # track active calls by query
-        self._on_update = on_update  # 数据更新时的回调
+        self._active_calls: Dict[str, dict] = {}
+        self._on_update = on_update
         self._last_cleanup = time.time()
 
-        # 自动订阅信号
+        # Auto-subscribe to signals
         tool_call_started.connect(self._on_started)
         tool_call_ended.connect(self._on_ended)
 
@@ -123,12 +121,11 @@ class ToolMetricsCollector:
         self._last_cleanup = now
 
     def _on_started(self, sender, **kwargs):
-        """处理调用开始信号 - 增加活跃计数"""
+        """Handle call start signal - increment active count."""
         tool_name = kwargs["tool_name"]
         query = kwargs["query"]
 
         with self._lock:
-            # Cleanup stale calls periodically
             self._cleanup_stale_calls()
 
             stats = self._stats.get(tool_name)
@@ -142,12 +139,11 @@ class ToolMetricsCollector:
                 "start_time": time.time(),
             }
 
-        # 通知更新
         if self._on_update:
             self._on_update()
 
     def _on_ended(self, sender, **kwargs):
-        """处理调用结束信号，更新统计 - 减少活跃计数"""
+        """Handle call end signal - decrement active count and update stats."""
         tool_name = kwargs["tool_name"]
         query = kwargs["query"]
 
@@ -158,7 +154,7 @@ class ToolMetricsCollector:
                 self._stats[tool_name] = stats
 
             stats.total_calls += 1
-            stats.record_call()  # for rate calculation
+            stats.record_call()
 
             if kwargs.get("success"):
                 stats.successful_calls += 1
@@ -174,17 +170,14 @@ class ToolMetricsCollector:
             stats.min_duration_ms = min(stats.min_duration_ms, duration)
             stats.total_results += kwargs.get("result_count", 0)
 
-            # Decrement active tasks
             stats.active_tasks = max(0, stats.active_tasks - 1)
-
             self._active_calls.pop(query, None)
 
-        # 通知更新
         if self._on_update:
             self._on_update()
 
     def get_summary(self) -> Dict[str, Any]:
-        """获取统计摘要"""
+        """Get statistics summary."""
         with self._lock:
             total_calls = sum(s.total_calls for s in self._stats.values())
             successful = sum(s.successful_calls for s in self._stats.values())
@@ -207,7 +200,7 @@ class ToolMetricsCollector:
             }
 
     def get_stats_table(self) -> "Table":
-        """生成Rich表格用于Live显示 - 改进的显示格式"""
+        """Generate Rich table for Live display."""
         from rich.table import Table
         from rich import box
 
@@ -221,20 +214,16 @@ class ToolMetricsCollector:
         table.add_column("Success", justify="right", style="green")
         table.add_column("Failed", justify="right", style="red")
         table.add_column("Avg Time", justify="right")
-        table.add_column("Status", justify="center")  # 原 Circuit 列
-        table.add_column("并发数", justify="right")  # 原 Active 列
-        table.add_column("Rate", justify="right")  # 新增调用速率列
+        table.add_column("Status", justify="center")
+        table.add_column("Active", justify="right")
+        table.add_column("Rate", justify="right")
 
         for tool_name, tool_stats in stats["by_tool"].items():
-            # Get circuit state from tool instance if available
-            # For now, derive from active calls and errors
             circuit_display, circuit_style = self._derive_circuit_state(tool_stats)
 
-            # Show active tasks with visual indicator
             active = tool_stats.get("active_tasks", 0)
             active_display = f"[yellow]{active}[/yellow]" if active > 0 else str(active)
 
-            # Rate display
             rate = tool_stats.get("calls_per_minute", 0)
             rate_display = f"{rate:.1f}/min" if rate > 0 else "-"
 
@@ -269,7 +258,6 @@ class ToolMetricsCollector:
         Since we track purely via signals without tool instance access,
         we derive state from recent error patterns.
         """
-        # For now, use a simple heuristic based on errors
         total = tool_stats.get("total_calls", 0)
         failed = tool_stats.get("failed_calls", 0)
 
@@ -278,17 +266,15 @@ class ToolMetricsCollector:
 
         error_rate = failed / total if total > 0 else 0
 
-        # If high error rate, show as "已熔断" (OPEN)
         if error_rate > 0.5 and total >= 3:
             return format_circuit_state("OPEN")
-        # If some errors, show as "恢复中" (HALF_OPEN)
         elif error_rate > 0.2 and total >= 2:
             return format_circuit_state("HALF_OPEN")
         else:
             return format_circuit_state("CLOSED")
 
     def reset(self):
-        """重置统计"""
+        """Reset statistics."""
         with self._lock:
             self._stats.clear()
             self._active_calls.clear()

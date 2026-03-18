@@ -197,15 +197,15 @@ def _print_results(results: dict):
         if is_hallucination is True:
             border_style = "red"
             status_text = "[bold red]HALLUCINATION[/bold red]"
-            icon = "❌"
+            icon = "[X]"
         elif is_hallucination is False:
             border_style = "green"
             status_text = "[bold green]REAL REFERENCE[/bold green]"
-            icon = "✅"
+            icon = "[OK]"
         else:
             border_style = "yellow"
             status_text = "[bold yellow]UNKNOWN / ERROR[/bold yellow]"
-            icon = "⚠️"
+            icon = "[?]"
 
         content = Text()
         content.append(f"Title: {title}\n", style="bold")

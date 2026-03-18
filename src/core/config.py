@@ -82,3 +82,9 @@ SEMANTIC_SCHOLAR_SEARCH_LIMIT = 5
 OPENREVIEW_SEARCH_LIMIT = 3
 OPENALEX_SEARCH_LIMIT = 3
 DUCKDUCKGO_SEARCH_LIMIT = 2  # Was 3, reduced as web search is slower
+
+# CrossEncoder Reranking Configuration
+CROSSENCODER_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+CROSSENCODER_DEVICE = "cpu"
+CROSSENCODER_MAX_LENGTH = 512
+RERANK_CANDIDATE_MULTIPLIER = 4  # Fetch Nx candidates for reranking

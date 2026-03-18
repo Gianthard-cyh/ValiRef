@@ -133,17 +133,11 @@ class TextExtractor(Extractor):
         return papers
 
     async def extract_batch(self, texts: List[str]) -> List[List[Paper]]:
-        """
-        Extract lists of referenced papers from a batch of text strings
-        """
-        batch_results = []
+        """Extract lists of referenced papers from a batch of text strings."""
+        results = []
         for text in texts:
-            try:
-                batch_results.append(await self.extract(text))
-            except Exception as e:
-                print(f"Error extracting from text: {e}")
-                batch_results.append([])
-        return batch_results
+            results.append(await self.extract(text))
+        return results
 
 
 class PDFExtractor(Extractor):
@@ -164,14 +158,8 @@ class PDFExtractor(Extractor):
         return await self.text_extractor.extract(text)
 
     async def extract_batch(self, file_paths: List[str]) -> List[List[Paper]]:
-        """
-        Extract lists of referenced papers from a batch of PDF file paths
-        """
-        batch_results = []
+        """Extract lists of referenced papers from a batch of PDF file paths."""
+        results = []
         for file_path in file_paths:
-            try:
-                batch_results.append(await self.extract(file_path))
-            except Exception as e:
-                print(f"Error extracting from PDF {file_path}: {e}")
-                batch_results.append([])
-        return batch_results
+            results.append(await self.extract(file_path))
+        return results

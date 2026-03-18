@@ -257,8 +257,8 @@ class HallucinationDetector:
         except Exception as e:
             logger.error(f"Agent validation failed: {e}")
             return ValidationResult(
-                hallucination_type="Fabrication",
-                confidence=0.5,
+                hallucination_type="Unknown",
+                confidence=0.0,
                 reasoning=f"Validation failed due to error: {e}",
                 evidence=[],
             )
