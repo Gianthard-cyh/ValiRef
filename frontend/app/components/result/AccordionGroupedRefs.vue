@@ -1,46 +1,67 @@
 <template>
   <div class="result-panel h-full flex flex-col">
-    <!-- 固定顶部：统计摘要 -->
-    <div class="panel-header flex-shrink-0">
-      <ResultSummary :result="result" />
+    <!-- Stats header -->
+    <div class="flex-shrink-0 flex border-b border-border dark:border-border-dark">
+      <div
+        v-for="(stat, index) in stats"
+        :key="stat.label"
+        class="flex-1 flex flex-col items-center justify-center py-4"
+        :class="[
+          index !== stats.length - 1 ? 'border-r border-border dark:border-border-dark' : '',
+          stat.highlight ? 'bg-surface-secondary dark:bg-surface-dark-secondary' : '',
+        ]"
+      >
+        <span
+          class="text-heading tabular-nums"
+          :class="stat.colorClass || 'text-text dark:text-text-dark'"
+        >
+          {{ stat.value }}
+        </span>
+        <span class="text-caption text-text-secondary dark:text-text-dark-secondary mt-1">{{ stat.label }}</span>
+      </div>
     </div>
 
-    <!-- 手风琴容器 -->
-    <div class="accordion-container flex-1 min-h-0 flex flex-col overflow-hidden border border-gray-200 rounded mt-4">
-      <!-- 顶部 Headers（展开分组之前的分组） -->
-      <div v-if="topGroups.length > 0" class="top-headers flex-shrink-0">
+    <!-- 手风琴内容区域 -->
+    <div class="flex-1 min-h-0 flex flex-col overflow-hidden">
+      <!-- Top headers (groups before active) -->
+      <div v-if="topGroups.length > 0" class="flex-shrink-0">
         <div
-          v-for="group in topGroups"
+          v-for="(group, index) in topGroups"
           :key="group.originalType"
-          class="group-header cursor-pointer hover:bg-gray-100 transition-colors border-b border-gray-200"
+          class="cursor-pointer border-b border-border dark:border-border-dark"
+          :class="index === 0 ? '' : ''"
           @click="activeType = group.originalType"
         >
-          <div class="flex items-center justify-between p-3 bg-gray-50">
+          <div class="flex items-center justify-between px-4 py-3 bg-surface-secondary dark:bg-surface-dark-secondary">
             <div class="flex items-center gap-3">
-              <HallucinationBadge :type="group.originalType" />
-              <span class="text-sm text-gray-500">({{ group.refs.length }}条)</span>
+              <!-- Icon separate from text -->
+              <span :class="[typeIcons[group.originalType], 'w-4 h-4']" />
+              <span class="text-small font-medium text-text dark:text-text-dark">{{ group.type }}</span>
+              <span class="text-small text-text-secondary dark:text-text-dark-secondary">({{ group.refs.length }}条)</span>
             </div>
-            <span class="text-gray-400">▼</span>
+            <span class="i-lucide-chevron-down w-4 h-4 text-text-muted dark:text-text-dark-tertiary" />
           </div>
         </div>
       </div>
 
-      <!-- 中间 Content 区域 -->
-      <div class="content-wrapper flex-1 min-h-0 flex flex-col overflow-hidden">
-        <!-- 当前激活分组的 Header（固定） -->
-        <div class="active-header flex-shrink-0 bg-gray-100 border-b border-gray-200">
-          <div class="flex items-center justify-between p-3">
+      <!-- Active group content -->
+      <div class="flex-1 min-h-0 flex flex-col overflow-hidden">
+        <!-- Active group header -->
+        <div class="flex-shrink-0 bg-surface-tertiary dark:bg-surface-dark-tertiary border-b border-border dark:border-border-dark">
+          <div class="flex items-center justify-between px-4 py-3">
             <div class="flex items-center gap-3">
-              <HallucinationBadge :type="activeGroup.originalType" />
-              <span class="text-sm text-gray-500">({{ activeGroup.refs.length }}条)</span>
+              <!-- Icon separate from text -->
+              <span :class="[typeIcons[activeGroup.originalType], 'w-4 h-4']" />
+              <span class="text-small font-medium text-text dark:text-text-dark">{{ activeGroup.type }}</span>
+              <span class="text-small text-text-secondary dark:text-text-dark-secondary">({{ activeGroup.refs.length }}条)</span>
             </div>
-            <span class="text-gray-400">▲</span>
+            <span class="i-lucide-chevron-up w-4 h-4 text-text-muted dark:text-text-dark-tertiary" />
           </div>
         </div>
 
-        <!-- 引用列表（可滚动） -->
-        <div class="content-area flex-1 overflow-y-auto min-h-0 bg-white">
-          <div class="divide-y divide-gray-100">
+        <!-- Scrollable reference list -->
+        <div class="flex-1 overflow-y-auto min-h-0 bg-surface dark:bg-surface-dark">
+          <div class="divide-y divide-border-subtle dark:divide-border-dark-subtle">
             <ReferenceCard
               v-for="ref in activeGroup.refs"
               :key="ref.title"
@@ -51,20 +72,22 @@
         </div>
       </div>
 
-      <!-- 底部 Headers（展开分组之后的分组） -->
-      <div v-if="bottomGroups.length > 0" class="bottom-headers flex-shrink-0">
+      <!-- Bottom headers (groups after active) -->
+      <div v-if="bottomGroups.length > 0" class="flex-shrink-0">
         <div
           v-for="group in bottomGroups"
           :key="group.originalType"
-          class="group-header cursor-pointer hover:bg-gray-100 transition-colors border-t border-gray-200"
+          class="cursor-pointer border-t border-border dark:border-border-dark"
           @click="activeType = group.originalType"
         >
-          <div class="flex items-center justify-between p-3 bg-gray-50">
+          <div class="flex items-center justify-between px-4 py-3 bg-surface-secondary dark:bg-surface-dark-secondary">
             <div class="flex items-center gap-3">
-              <HallucinationBadge :type="group.originalType" />
-              <span class="text-sm text-gray-500">({{ group.refs.length }}条)</span>
+              <!-- Icon separate from text -->
+              <span :class="[typeIcons[group.originalType], 'w-4 h-4']" />
+              <span class="text-small font-medium text-text dark:text-text-dark">{{ group.type }}</span>
+              <span class="text-small text-text-secondary dark:text-text-dark-secondary">({{ group.refs.length }}条)</span>
             </div>
-            <span class="text-gray-400">▼</span>
+            <span class="i-lucide-chevron-down w-4 h-4 text-text-muted dark:text-text-dark-tertiary" />
           </div>
         </div>
       </div>
@@ -87,7 +110,7 @@ interface Props {
 
 const props = defineProps<Props>();
 
-const typeOrder = ['Real', 'Fabrication', 'AttributionError', 'Irrelevance', 'Counterfactual', 'Unknown'];
+const typeOrder = ['Fabrication', 'AttributionError', 'Irrelevance', 'Counterfactual', 'Unknown', 'Real'];
 const typeNames: Record<string, string> = {
   Real: '真实引用',
   Fabrication: '完全虚构',
@@ -97,10 +120,50 @@ const typeNames: Record<string, string> = {
   Unknown: '未知类型',
 };
 
-// 当前激活的分组类型
+// Icons matching the homepage
+const typeIcons: Record<string, string> = {
+  'Real': 'i-lucide-check-circle text-emerald-500',
+  'Fabrication': 'i-lucide-x-circle text-rose-500',
+  'AttributionError': 'i-lucide-user-x text-amber-500',
+  'Irrelevance': 'i-lucide-git-compare text-blue-500',
+  'Counterfactual': 'i-lucide-arrow-left-right text-violet-500',
+  'Unknown': 'i-lucide-help-circle text-text-muted dark:text-text-dark-tertiary',
+  // Chinese type mapping
+  '真实引用': 'i-lucide-check-circle text-emerald-500',
+  '完全虚构': 'i-lucide-x-circle text-rose-500',
+  '作者错误': 'i-lucide-user-x text-amber-500',
+  '内容不符': 'i-lucide-git-compare text-blue-500',
+  '结论相反': 'i-lucide-arrow-left-right text-violet-500',
+  '未知类型': 'i-lucide-help-circle text-text-muted dark:text-text-dark-tertiary',
+};
+
+const stats = computed(() => [
+  {
+    label: '总引用数',
+    value: props.result.total_references,
+    highlight: false,
+  },
+  {
+    label: '真实引用',
+    value: props.result.real_count,
+    colorClass: 'text-emerald-600 dark:text-emerald-400',
+    highlight: false,
+  },
+  {
+    label: '幻觉引用',
+    value: props.result.hallucination_count,
+    colorClass: props.result.hallucination_count > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-text dark:text-text-dark',
+    highlight: false,
+  },
+  {
+    label: '耗时(秒)',
+    value: props.result.duration_seconds?.toFixed(1) || '-',
+    highlight: false,
+  },
+]);
+
 const activeType = ref<string>('');
 
-// 计算分组数据
 const groups = computed<Group[]>(() => {
   const grouped = new Map<string, ReferenceResult[]>();
 
@@ -121,19 +184,16 @@ const groups = computed<Group[]>(() => {
     }));
 });
 
-// 当前激活的分组
 const activeGroup = computed(() => {
   return groups.value.find(g => g.originalType === activeType.value) || groups.value[0];
 });
 
-// 顶部 Headers（激活分组之前的分组）
 const topGroups = computed(() => {
   const activeIndex = groups.value.findIndex(g => g.originalType === activeType.value);
   if (activeIndex <= 0) return [];
   return groups.value.slice(0, activeIndex);
 });
 
-// 底部 Headers（激活分组之后的分组）
 const bottomGroups = computed(() => {
   const activeIndex = groups.value.findIndex(g => g.originalType === activeType.value);
   if (activeIndex === -1) return groups.value.slice(1);
@@ -141,13 +201,11 @@ const bottomGroups = computed(() => {
   return groups.value.slice(activeIndex + 1);
 });
 
-// 初始化：默认激活第一个非 Real 的分组
 onMounted(() => {
   const firstNonReal = groups.value.find(g => g.originalType !== 'Real');
   activeType.value = firstNonReal?.originalType || groups.value[0]?.originalType || '';
 });
 
-// 当结果变化时重新初始化
 watch(() => props.result.references, () => {
   const firstNonReal = groups.value.find(g => g.originalType !== 'Real');
   activeType.value = firstNonReal?.originalType || groups.value[0]?.originalType || '';

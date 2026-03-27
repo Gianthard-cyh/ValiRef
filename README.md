@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/SVG/Square.svg" width="120" alt="ValiRef Logo" />
+  <img src="assets/svg/logo.svg" width="120" alt="ValiRef Logo" />
   <h1>ValiRef</h1>
   <p><strong>AI-Powered Citation Validation for Academic Papers</strong></p>
   <p>

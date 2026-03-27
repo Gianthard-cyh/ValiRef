@@ -1,22 +1,22 @@
 <template>
   <div class="flex items-center gap-4">
-    <span class="text-sm text-gray-600">搜索模式：</span>
+    <span class="text-small text-text-secondary dark:text-text-dark-secondary">搜索模式：</span>
     <div class="flex gap-2">
       <button
         v-for="mode in modes"
         :key="mode.value"
         :class="[
-          'px-4 py-2 border rounded text-sm font-medium transition-all',
+          'px-4 py-2 border rounded-lg text-small font-medium transition-all duration-200',
           modelValue === mode.value
-            ? 'border-gray-900 bg-gray-900 text-white'
-            : 'border-gray-200 text-gray-700 hover:border-gray-400',
+            ? 'border-text dark:border-text-dark bg-text dark:bg-text-dark text-surface dark:text-surface-dark'
+            : 'border-border dark:border-border-dark text-text-secondary dark:text-text-dark-secondary hover:border-border-strong dark:hover:border-border-dark-strong hover:text-text dark:hover:text-text-dark',
         ]"
         @click="modelValue = mode.value"
       >
         {{ mode.label }}
       </button>
     </div>
-    <span class="text-xs text-gray-400">{{ currentDescription }}</span>
+    <span class="text-caption text-text-muted dark:text-text-dark-tertiary">{{ currentDescription }}</span>
   </div>
 </template>
 
