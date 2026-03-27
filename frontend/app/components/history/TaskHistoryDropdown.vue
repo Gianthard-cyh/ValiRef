@@ -68,11 +68,12 @@ const { taskHistory, clearHistory, loadFromHistory } = taskStore;
 
 const isOpen = ref(false);
 
-function loadTask(taskId: string) {
-  if (loadFromHistory(taskId)) {
+async function loadTask(taskId: string) {
+  const result = await loadFromHistory(taskId);
+  if (result) {
     isOpen.value = false;
   } else {
-    alert('该任务结果已过期，请重新上传');
+    alert('无法加载该任务，请重新上传');
   }
 }
 

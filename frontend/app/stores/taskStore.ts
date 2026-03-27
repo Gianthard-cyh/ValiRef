@@ -14,6 +14,7 @@ export const useTaskStore = defineStore('task', () => {
   const currentTaskId = ref<string>('');
   const currentStatus = ref<TaskStatusResponse | null>(null);
   const currentResult = ref<PDFValidationResult | null>(null);
+  const currentPDFFile = ref<File | null>(null);
 
   // History
   const taskHistory = ref<TaskHistoryItem[]>([]);
@@ -71,28 +72,85 @@ export const useTaskStore = defineStore('task', () => {
   }
 
   // Load result from history
-  function loadFromHistory(taskId: string): boolean {
+  async function loadFromHistory(taskId: string): Promise<'completed' | 'processing' | 'failed' | null> {
     const item = taskHistory.value.find(t => t.task_id === taskId);
-    if (item?.result) {
+    if (!item) return null;
+
+    // Load PDF from IndexedDB
+    const pdfFile = await loadPDF(taskId);
+    if (pdfFile) {
+      currentPDFFile.value = pdfFile;
+    }
+
+    // If has result, show completed page
+    if (item.result) {
       currentTaskId.value = taskId;
       currentResult.value = item.result;
       currentStatus.value = {
         task_id: taskId,
         filename: item.filename,
-        status: item.status,
+        status: 'completed',
         created_at: item.created_at,
       };
       pageState.value = 'completed';
-      return true;
+      return 'completed';
     }
-    return false;
+
+    // Check current status from API
+    try {
+      const { getTaskStatus, getValidationResult } = useApi();
+      const status = await getTaskStatus(taskId);
+
+      currentTaskId.value = taskId;
+      currentStatus.value = {
+        task_id: taskId,
+        filename: item.filename,
+        status: status.status,
+        created_at: item.created_at,
+      };
+
+      // Task still processing
+      if (['pending', 'processing', 'retrying'].includes(status.status)) {
+        pageState.value = 'processing';
+        // Start polling
+        startPolling(taskId, item.filename);
+        return 'processing';
+      }
+
+      // Task completed but no result in history (should fetch result)
+      if (status.status === 'completed') {
+        const result = await getValidationResult(taskId);
+        currentResult.value = result;
+        addToHistory(taskId, item.filename, 'completed', result);
+        pageState.value = 'completed';
+        return 'completed';
+      }
+
+      // Task failed
+      if (['failed', 'failed_permanently'].includes(status.status)) {
+        pageState.value = 'error';
+        errorMessage.value = '任务处理失败';
+        return 'failed';
+      }
+    } catch (e) {
+      console.error('Failed to load task status:', e);
+      return null;
+    }
+
+    return null;
   }
 
   // Start polling task status
-  async function startPolling(taskId: string, filename: string) {
+  async function startPolling(taskId: string, filename: string, file?: File) {
     stopPolling();
     currentTaskId.value = taskId;
     pageState.value = 'processing';
+
+    // Save PDF to IndexedDB if provided
+    if (file) {
+      currentPDFFile.value = file;
+      await savePDF(taskId, filename, file);
+    }
 
     const { getTaskStatus, getValidationResult } = useApi();
 
@@ -141,6 +199,7 @@ export const useTaskStore = defineStore('task', () => {
     currentTaskId.value = '';
     currentStatus.value = null;
     currentResult.value = null;
+    currentPDFFile.value = null;
   }
 
   // Computed
@@ -161,6 +220,7 @@ export const useTaskStore = defineStore('task', () => {
     currentTaskId,
     currentStatus,
     currentResult,
+    currentPDFFile,
     taskHistory,
     progress,
     isProcessing,
