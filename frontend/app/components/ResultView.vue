@@ -1,19 +1,19 @@
 <template>
   <div class="h-[calc(100vh-3.5rem)] flex flex-col bg-surface dark:bg-surface-dark">
     <!-- Top Bar -->
-    <div class="flex-shrink-0 px-6 py-4 border-b border-border dark:border-border-dark flex items-center justify-between animate-enter">
+    <div class="flex-shrink-0 px-6 py-4 border-b border-border dark:border-border-dark flex items-center justify-between">
       <div>
         <h2 class="text-title-semibold">验证结果</h2>
         <p class="text-caption text-text-secondary dark:text-text-dark-secondary">{{ result.filename }}</p>
       </div>
-      <LineButton variant="outline" size="sm" @click="reset" class="animate-enter-delay-1">
+      <LineButton variant="outline" size="sm" @click="reset">
         <span class="i-lucide-rotate-ccw w-4 h-4" />
         新文件
       </LineButton>
     </div>
 
     <!-- Content -->
-    <div class="flex-1 min-h-0 flex flex-col lg:flex-row animate-enter-delay-2">
+    <div class="flex-1 min-h-0 flex flex-col lg:flex-row">
       <!-- PDF -->
       <div class="flex-1 min-h-0 border-r border-border dark:border-border-dark flex flex-col">
         <div class="flex-shrink-0 px-4 py-2 border-b border-border-subtle dark:border-border-dark-subtle flex items-center justify-between bg-surface-secondary dark:bg-surface-dark-secondary">

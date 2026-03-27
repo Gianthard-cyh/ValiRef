@@ -3,20 +3,19 @@
     <!-- Stats header -->
     <div class="flex-shrink-0 flex border-b border-border dark:border-border-dark">
       <div
-        v-for="(stat, index) in animatedStats"
+        v-for="(stat, index) in stats"
         :key="stat.label"
-        class="flex-1 flex flex-col items-center justify-center py-4 animate-enter"
+        class="flex-1 flex flex-col items-center justify-center py-4"
         :class="[
           index !== stats.length - 1 ? 'border-r border-border dark:border-border-dark' : '',
           stat.highlight ? 'bg-surface-secondary dark:bg-surface-dark-secondary' : '',
-          `stagger-${index + 1}`,
         ]"
       >
         <span
           class="text-heading tabular-nums"
           :class="stat.colorClass || 'text-text dark:text-text-dark'"
         >
-          {{ stat.displayValue }}
+          {{ stat.value }}
         </span>
         <span class="text-caption text-text-secondary dark:text-text-dark-secondary mt-1">{{ stat.label }}</span>
       </div>
@@ -29,7 +28,7 @@
         <div
           v-for="(group, index) in topGroups"
           :key="group.originalType"
-          class="cursor-pointer border-b border-border dark:border-border-dark transition-colors duration-200 hover:bg-surface-tertiary dark:hover:bg-surface-dark-tertiary"
+          class="cursor-pointer border-b border-border dark:border-border-dark"
           :class="index === 0 ? '' : ''"
           @click="activeType = group.originalType"
         >
@@ -40,7 +39,7 @@
               <span class="text-small font-medium text-text dark:text-text-dark">{{ group.type }}</span>
               <span class="text-small text-text-secondary dark:text-text-dark-secondary">({{ group.refs.length }}条)</span>
             </div>
-            <span class="i-lucide-chevron-down w-4 h-4 text-text-muted dark:text-text-dark-tertiary transition-transform duration-300" />
+            <span class="i-lucide-chevron-down w-4 h-4 text-text-muted dark:text-text-dark-tertiary" />
           </div>
         </div>
       </div>
@@ -56,30 +55,20 @@
               <span class="text-small font-medium text-text dark:text-text-dark">{{ activeGroup.type }}</span>
               <span class="text-small text-text-secondary dark:text-text-dark-secondary">({{ activeGroup.refs.length }}条)</span>
             </div>
-            <span class="i-lucide-chevron-up w-4 h-4 text-text-muted dark:text-text-dark-tertiary transition-transform duration-300" />
+            <span class="i-lucide-chevron-up w-4 h-4 text-text-muted dark:text-text-dark-tertiary" />
           </div>
         </div>
 
         <!-- Scrollable reference list -->
         <div class="flex-1 overflow-y-auto min-h-0 bg-surface dark:bg-surface-dark">
-          <TransitionGroup
-            tag="div"
-            class="divide-y divide-border-subtle dark:divide-border-dark-subtle"
-            enter-active-class="transition-all duration-300 ease-out"
-            enter-from-class="opacity-0 translate-x-4"
-            enter-to-class="opacity-100 translate-x-0"
-            leave-active-class="transition-all duration-200 ease-in"
-            leave-from-class="opacity-100 translate-x-0"
-            leave-to-class="opacity-0 -translate-x-4"
-          >
+          <div class="divide-y divide-border-subtle dark:divide-border-dark-subtle">
             <ReferenceCard
-              v-for="(ref, index) in activeGroup.refs"
+              v-for="ref in activeGroup.refs"
               :key="ref.title"
               :reference="ref"
               class="border-0 rounded-none"
-              :style="{ animationDelay: `${index * 50}ms` }"
             />
-          </TransitionGroup>
+          </div>
         </div>
       </div>
 
@@ -88,7 +77,7 @@
         <div
           v-for="group in bottomGroups"
           :key="group.originalType"
-          class="cursor-pointer border-t border-border dark:border-border-dark transition-colors duration-200 hover:bg-surface-tertiary dark:hover:bg-surface-dark-tertiary"
+          class="cursor-pointer border-t border-border dark:border-border-dark"
           @click="activeType = group.originalType"
         >
           <div class="flex items-center justify-between px-4 py-3 bg-surface-secondary dark:bg-surface-dark-secondary">
@@ -98,7 +87,7 @@
               <span class="text-small font-medium text-text dark:text-text-dark">{{ group.type }}</span>
               <span class="text-small text-text-secondary dark:text-text-dark-secondary">({{ group.refs.length }}条)</span>
             </div>
-            <span class="i-lucide-chevron-down w-4 h-4 text-text-muted dark:text-text-dark-tertiary transition-transform duration-300" />
+            <span class="i-lucide-chevron-down w-4 h-4 text-text-muted dark:text-text-dark-tertiary" />
           </div>
         </div>
       </div>
@@ -120,18 +109,6 @@ interface Props {
 }
 
 const props = defineProps<Props>();
-
-// Animated stats using counter composable
-const animatedStats = computed(() => {
-  return stats.value.map((stat, index) => {
-    const numericValue = typeof stat.value === 'number' ? stat.value : 0;
-    const { displayValue } = useAnimatedCounter(numericValue, 600 + index * 100);
-    return {
-      ...stat,
-      displayValue: typeof stat.value === 'string' ? stat.value : displayValue.value,
-    };
-  });
-});
 
 const typeOrder = ['Fabrication', 'AttributionError', 'Irrelevance', 'Counterfactual', 'Unknown', 'Real'];
 const typeNames: Record<string, string> = {
