@@ -13,7 +13,7 @@ env:
   # 腾讯云容器镜像服务配置
   # 个人版: ccr.ccs.tencentyun.com
   # 企业版: xxx.tencentcloudcr.com
-  REGISTRY: ${{ secrets.TCR_REGISTRY || 'ccr.ccs.tencentyun.com' }}
+  REGISTRY: ${{ secrets.TCR_REGISTRY || 'sgccr.ccs.tencentyun.com' }}
   TCR_NAMESPACE: ${{ secrets.TCR_NAMESPACE || 'valiref' }}
   IMAGE_NAME: valiref-backend
 
