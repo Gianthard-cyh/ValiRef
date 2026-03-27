@@ -160,7 +160,7 @@ jobs:
     needs: [build-frontend, build-api]
     if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')
     environment:
-      name: production
+      name: tencent-2c4g-1
 
     steps:
       - uses: actions/checkout@v4
