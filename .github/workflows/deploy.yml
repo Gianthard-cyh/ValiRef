@@ -118,6 +118,8 @@ jobs:
     name: Build API Image
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')
+    environment:
+      name: tencent-2c4g-1
     permissions:
       contents: read
       packages: write
