@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="_图层_1" data-name="图层_1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 472.02 212.16">
+  <defs>
+    <style>
+      .cls-1 {
+        letter-spacing: 0em;
+      }
+
+      .cls-2 {
+        fill: #231f20;
+        font-family: NotoSerifSC-Bold, 'Noto Serif SC';
+        font-size: 62.83px;
+        font-variation-settings: 'wght' 700;
+        font-weight: 700;
+      }
+
+      .cls-3 {
+        fill: #fff;
+      }
+
+      .cls-4 {
+        letter-spacing: -.09em;
+      }
+
+      .cls-5 {
+        letter-spacing: -.02em;
+      }
+
+      .cls-6 {
+        letter-spacing: 0em;
+      }
+    </style>
+  </defs>
+  <text class="cls-2" transform="translate(192.96 129.57)"><tspan class="cls-4" x="0" y="0">V</tspan><tspan x="40.53" y="0">al</tspan><tspan class="cls-6" x="99.59" y="0">i</tspan><tspan class="cls-5" x="121.14" y="0">R</tspan><tspan class="cls-1" x="167.26" y="0">e</tspan><tspan x="203.14" y="0">f</tspan></text>
+  <g>
+    <polygon points="97.45 48.14 49.85 64.77 49.85 81.77 111.52 102.69 158.76 81.77 158.76 64.59 97.45 48.14"/>
+    <polygon points="97.39 75.42 49.79 92.05 49.79 109.04 111.46 129.97 158.7 109.04 158.7 91.87 97.39 75.42"/>
+    <polygon points="97.45 103.12 49.85 119.75 49.85 143.09 111.52 164.02 158.76 143.09 158.76 119.57 97.45 103.12"/>
+    <polygon class="cls-3" points="53.5 67.46 53.5 79.25 109.88 98.07 109.88 85.92 53.5 67.46"/>
+    <polygon class="cls-3" points="53.5 95.85 53.5 107.64 109.88 126.46 109.88 114.31 53.5 95.85"/>
+    <polygon class="cls-3" points="53.5 123.26 53.5 140.14 109.88 158.97 109.88 141.72 53.5 123.26"/>
+  </g>
+</svg>
