@@ -23,8 +23,8 @@
             <span class="i-lucide-external-link w-3 h-3" />
           </a>
         </div>
-        <div class="flex-1 min-h-0 p-4 bg-surface-secondary dark:bg-surface-dark-secondary">
-          <iframe v-if="pdfUrl" :src="pdfUrl" class="w-full h-full bg-surface dark:bg-surface-dark border border-border dark:border-border-dark rounded-lg" />
+        <div class="flex-1 min-h-0 bg-surface-secondary dark:bg-surface-dark-secondary">
+          <iframe v-if="pdfUrl" :src="pdfUrl" class="w-full h-full bg-surface dark:bg-surface-dark border border-border dark:border-border-dark" />
           <div v-else class="w-full h-full flex flex-col items-center justify-center text-text-muted dark:text-text-dark-tertiary gap-2">
             <span class="i-lucide-file-x w-6 h-6" />
             <span class="text-sm">PDF 无法预览</span>

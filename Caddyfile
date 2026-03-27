@@ -1,0 +1,21 @@
+{
+    auto_https off
+    admin off
+}
+
+:80 {
+    # 前端静态文件
+    root * /usr/share/caddy/html
+    file_server
+
+    # API 代理
+    handle_path /api/* {
+        reverse_proxy api:8000
+    }
+
+    # 前端路由支持（SPA fallback）
+    handle {
+        try_files {path} /index.html
+        file_server
+    }
+}
