@@ -11,12 +11,22 @@
         <div class="flex items-center gap-3">
           <!-- Theme toggle -->
           <button
-            class="w-8 h-8 flex items-center justify-center rounded-lg text-text-secondary dark:text-text-dark-secondary hover:bg-surface-secondary dark:hover:bg-surface-dark-secondary"
+            class="w-8 h-8 flex items-center justify-center rounded-lg text-text-secondary dark:text-text-dark-secondary hover:bg-surface-secondary dark:hover:bg-surface-dark-secondary transition-all duration-200"
             @click="toggleTheme"
             :aria-label="isDark ? '切换到浅色模式' : '切换到深色模式'"
           >
-            <span v-if="isDark" class="i-lucide-sun w-5 h-5" />
-            <span v-else class="i-lucide-moon w-5 h-5" />
+            <Transition
+              enter-active-class="transition-all duration-200 ease-out"
+              enter-from-class="opacity-0 rotate-90 scale-50"
+              enter-to-class="opacity-100 rotate-0 scale-100"
+              leave-active-class="transition-all duration-150 ease-in"
+              leave-from-class="opacity-100 rotate-0 scale-100"
+              leave-to-class="opacity-0 -rotate-90 scale-50"
+              mode="out-in"
+            >
+              <span v-if="isDark" class="i-lucide-sun w-5 h-5" />
+              <span v-else class="i-lucide-moon w-5 h-5" />
+            </Transition>
           </button>
           <!-- GitHub Star button -->
           <a
@@ -27,7 +37,13 @@
           >
             <span class="i-lucide-github w-4 h-4 text-text dark:text-text-dark" />
             <span class="text-caption text-text-secondary dark:text-text-dark-secondary">Star</span>
-            <span v-if="starCount" class="text-caption font-medium text-text dark:text-text-dark tabular-nums">{{ starCount }}</span>
+            <Transition
+              enter-active-class="transition-all duration-300 ease-out"
+              enter-from-class="opacity-0 scale-50"
+              enter-to-class="opacity-100 scale-100"
+            >
+              <span v-if="starCount" class="text-caption font-medium text-text dark:text-text-dark tabular-nums">{{ starCount }}</span>
+            </Transition>
           </a>
           <TaskHistoryDropdown />
         </div>
@@ -37,26 +53,53 @@
     <!-- Main Content -->
     <main class="pt-14">
       <!-- Upload State - with diagonal pattern background -->
-      <div v-if="pageState === 'idle' || pageState === 'error'" class="relative">
-        <!-- Diagonal pattern background - light mode -->
-        <div class="absolute inset-0 pointer-events-none bg-surface-tertiary dark:hidden"
-             style="background-image: repeating-linear-gradient(135deg, #d4d4d4 0px, #d4d4d4 1px, transparent 1px, transparent 20px);" />
-        <!-- Diagonal pattern background - dark mode -->
-        <div class="absolute inset-0 pointer-events-none bg-surface-dark-tertiary hidden dark:block"
-             style="background-image: repeating-linear-gradient(135deg, #404040 0px, #404040 1px, transparent 1px, transparent 20px);" />
+      <Transition
+        enter-active-class="transition-all duration-500 ease-out"
+        enter-from-class="opacity-0 translate-y-4"
+        enter-to-class="opacity-100 translate-y-0"
+        leave-active-class="transition-all duration-300 ease-in"
+        leave-from-class="opacity-100 translate-y-0"
+        leave-to-class="opacity-0 -translate-y-4"
+      >
+        <div v-if="pageState === 'idle' || pageState === 'error'" class="relative">
+          <!-- Diagonal pattern background - light mode -->
+          <div class="absolute inset-0 pointer-events-none bg-surface-tertiary dark:hidden"
+               style="background-image: repeating-linear-gradient(135deg, #d4d4d4 0px, #d4d4d4 1px, transparent 1px, transparent 20px);" />
+          <!-- Diagonal pattern background - dark mode -->
+          <div class="absolute inset-0 pointer-events-none bg-surface-dark-tertiary hidden dark:block"
+               style="background-image: repeating-linear-gradient(135deg, #404040 0px, #404040 1px, transparent 1px, transparent 20px);" />
 
-        <UploadView />
-      </div>
+          <UploadView />
+        </div>
+      </Transition>
 
       <!-- Processing State -->
-      <ProcessingView v-if="pageState === 'processing'" />
+      <Transition
+        enter-active-class="transition-all duration-500 ease-out"
+        enter-from-class="opacity-0 translate-y-4"
+        enter-to-class="opacity-100 translate-y-0"
+        leave-active-class="transition-all duration-300 ease-in"
+        leave-from-class="opacity-100 translate-y-0"
+        leave-to-class="opacity-0 -translate-y-4"
+      >
+        <ProcessingView v-if="pageState === 'processing'" />
+      </Transition>
 
       <!-- Results State -->
-      <ResultView
-        v-if="pageState === 'completed' && currentResult"
-        :result="currentResult"
-        :pdf-url="pdfUrl"
-      />
+      <Transition
+        enter-active-class="transition-all duration-500 ease-out"
+        enter-from-class="opacity-0 translate-y-4"
+        enter-to-class="opacity-100 translate-y-0"
+        leave-active-class="transition-all duration-300 ease-in"
+        leave-from-class="opacity-100 translate-y-0"
+        leave-to-class="opacity-0 -translate-y-4"
+      >
+        <ResultView
+          v-if="pageState === 'completed' && currentResult"
+          :result="currentResult"
+          :pdf-url="pdfUrl"
+        />
+      </Transition>
     </main>
   </div>
 </template>

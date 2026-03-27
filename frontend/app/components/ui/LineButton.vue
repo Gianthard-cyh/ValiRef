@@ -3,10 +3,11 @@
     :disabled="disabled || loading"
     :class="[
       // Base styles
-      'inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-all duration-200',
+      'inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-all duration-200 ease-out',
       'focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-surface dark:focus:ring-offset-surface-dark',
       'disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100',
-      'active:scale-[0.98]',
+      'active:scale-[0.98] active:duration-100',
+      'hover:-translate-y-0.5 hover:shadow-sm',
       block ? 'w-full' : '',
       sizeClasses[size],
       variantClasses[variant],

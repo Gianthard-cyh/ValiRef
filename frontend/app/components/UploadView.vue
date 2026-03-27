@@ -4,17 +4,17 @@
     <div class="w-full max-w-5xl bg-surface dark:bg-surface-dark min-h-[calc(100vh-3.5rem)] border-x border-border dark:border-border-dark py-12 relative">
       <div class="px-12">
         <!-- Title -->
-        <div class="mb-10 text-center">
+        <div class="mb-10 text-center animate-enter">
           <h1 class="text-display mb-3">
             验证 PDF 引用
           </h1>
-          <p class="text-body text-text-secondary dark:text-text-dark-secondary max-w-md mx-auto">
+          <p class="text-body text-text-secondary dark:text-text-dark-secondary max-w-md mx-auto animate-enter-delay-1">
             智能检测学术文献中的引用问题
           </p>
         </div>
 
         <!-- Detection Types -->
-        <div class="mb-10 border border-border dark:border-border-dark overflow-hidden rounded-lg">
+        <div class="mb-10 border border-border dark:border-border-dark overflow-hidden rounded-lg animate-enter-delay-2">
           <div class="px-4 py-3 bg-surface-secondary dark:bg-surface-dark-secondary border-b border-border dark:border-border-dark">
             <p class="text-small font-medium">检测类型</p>
           </div>
@@ -52,7 +52,7 @@
 
         <!-- Upload Zone -->
         <div
-          class="border-2 border-dashed rounded-lg p-12 bg-surface dark:bg-surface-dark"
+          class="border-2 border-dashed rounded-lg p-12 bg-surface dark:bg-surface-dark animate-enter-delay-3 transition-all duration-300 ease-out hover:scale-[1.01]"
           :class="[
             isDragging || selectedFile
               ? 'border-text dark:border-text-dark bg-surface-secondary dark:bg-surface-dark-secondary'
@@ -93,20 +93,38 @@
         </div>
 
         <!-- Submit -->
-        <LineButton
-          v-if="selectedFile"
-          block
-          size="lg"
-          class="mt-6"
-          :loading="isSubmitting"
-          @click="submit">
-          {{ isSubmitting ? '上传中...' : '开始验证' }}
-        </LineButton>
+        <Transition
+          enter-active-class="transition-all duration-300 ease-out"
+          enter-from-class="opacity-0 translate-y-2"
+          enter-to-class="opacity-100 translate-y-0"
+          leave-active-class="transition-all duration-200 ease-in"
+          leave-from-class="opacity-100 translate-y-0"
+          leave-to-class="opacity-0 translate-y-2"
+        >
+          <LineButton
+            v-if="selectedFile"
+            block
+            size="lg"
+            class="mt-6"
+            :loading="isSubmitting"
+            @click="submit">
+            {{ isSubmitting ? '上传中...' : '开始验证' }}
+          </LineButton>
+        </Transition>
 
         <!-- Error -->
-        <div v-if="pageState === 'error'" class="mt-6 text-sm text-rose-600 dark:text-rose-400 text-center">
-          {{ errorMessage }}
-        </div>
+        <Transition
+          enter-active-class="transition-all duration-300 ease-out"
+          enter-from-class="opacity-0 translate-y-2"
+          enter-to-class="opacity-100 translate-y-0"
+          leave-active-class="transition-all duration-200 ease-in"
+          leave-from-class="opacity-100 translate-y-0"
+          leave-to-class="opacity-0 -translate-y-2"
+        >
+          <div v-if="pageState === 'error'" class="mt-6 text-sm text-rose-600 dark:text-rose-400 text-center">
+            {{ errorMessage }}
+          </div>
+        </Transition>
       </div>
     </div>
   </div>

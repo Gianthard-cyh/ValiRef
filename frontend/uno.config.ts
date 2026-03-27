@@ -94,6 +94,15 @@ export default defineConfig({
     // Focus rings
     'focus-ring': 'focus:outline-none focus:ring-2 focus:ring-text/20 dark:focus:ring-text-dark/20 focus:ring-offset-2 focus:ring-offset-surface dark:focus:ring-offset-surface-dark',
     'focus-ring-subtle': 'focus:outline-none focus:ring-2 focus:ring-text/10 dark:focus:ring-text-dark/10',
+
+    // Animation utilities
+    'animate-enter': 'opacity-0 animate-fade-in-up',
+    'animate-enter-delay-1': 'opacity-0 animate-fade-in-up stagger-1',
+    'animate-enter-delay-2': 'opacity-0 animate-fade-in-up stagger-2',
+    'animate-enter-delay-3': 'opacity-0 animate-fade-in-up stagger-3',
+    'animate-enter-delay-4': 'opacity-0 animate-fade-in-up stagger-4',
+    'animate-enter-delay-5': 'opacity-0 animate-fade-in-up stagger-5',
+    'animate-enter-delay-6': 'opacity-0 animate-fade-in-up stagger-6',
   },
   rules: [
     // Fluid typography
