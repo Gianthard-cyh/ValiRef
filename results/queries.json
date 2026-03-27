@@ -1,0 +1,482 @@
+[
+  {
+    "sample_id": "2602.12276",
+    "sample_title": "Agentic Test-Time Scaling for WebAgents",
+    "query": "Agentic Test-Time Scaling for WebAgents",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 1.7774105072021484
+  },
+  {
+    "sample_id": "2602.12275",
+    "sample_title": "On-Policy Context Distillation for Language Models",
+    "query": "On-Policy Context Distillation for Language Models",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 2.3272037506103516
+  },
+  {
+    "sample_id": "2602.12262",
+    "sample_title": "T3D: Few-Step Diffusion Language Models via Trajec",
+    "query": "T3D: Few-Step Diffusion Language Models via Trajectory Self-Distillation with Direct Discriminative Optimization",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 1.9545555114746094
+  },
+  {
+    "sample_id": "2602.12251",
+    "sample_title": "A technical curriculum on language-oriented artifi",
+    "query": "A technical curriculum on language-oriented artificial intelligence in translation and specialised communication",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 2.4261474609375
+  },
+  {
+    "sample_id": "2602.12249",
+    "sample_title": "\"Sorry, I Didn't Catch That\": How Speech Models Mi",
+    "query": "\"Sorry, I Didn't Catch That\": How Speech Models Miss What Matters Most",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 2.024412155151367
+  },
+  {
+    "sample_id": "2602.12241",
+    "sample_title": "Moonshine v2: Ergodic Streaming Encoder ASR for La",
+    "query": "Moonshine v2: Ergodic Streaming Encoder ASR for Latency-Critical Speech Applications",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 1.7650127410888672
+  },
+  {
+    "sample_id": "2602.12237",
+    "sample_title": "Olmix: A Framework for Data Mixing Throughout LM D",
+    "query": "Olmix: A Framework for Data Mixing Throughout LM Development",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 2.0830631256103516
+  },
+  {
+    "sample_id": "2602.12235",
+    "sample_title": "Detecting Overflow in Compressed Token Representat",
+    "query": "Detecting Overflow in Compressed Token Representations for Retrieval-Augmented Generation",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 2.5281906127929688
+  },
+  {
+    "sample_id": "2602.12203",
+    "sample_title": "ExStrucTiny: A Benchmark for Schema-Variable Struc",
+    "query": "ExStrucTiny: A Benchmark for Schema-Variable Structured Information Extraction from Document Images",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 2.386331558227539
+  },
+  {
+    "sample_id": "2602.12196",
+    "sample_title": "Visual Reasoning Benchmark: Evaluating Multimodal ",
+    "query": "Visual Reasoning Benchmark: Evaluating Multimodal LLMs on Classroom-Authentic Visual Problems from Primary Education",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 1.8565654754638672
+  },
+  {
+    "sample_id": "2602.12192",
+    "sample_title": "Query-focused and Memory-aware Reranker for Long C",
+    "query": "Query-focused and Memory-aware Reranker for Long Context Processing",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 2.1359920501708984
+  },
+  {
+    "sample_id": "2602.12172",
+    "sample_title": "Pedagogically-Inspired Data Synthesis for Language",
+    "query": "Pedagogically-Inspired Data Synthesis for Language Model Knowledge Distillation",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 2.00653076171875
+  },
+  {
+    "sample_id": "2602.12153",
+    "sample_title": "dVoting: Fast Voting for dLLMs",
+    "query": "dVoting: Fast Voting for dLLMs",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 2.108335494995117
+  },
+  {
+    "sample_id": "2602.12150",
+    "sample_title": "GPT-4o Lacks Core Features of Theory of Mind",
+    "query": "GPT-4o Lacks Core Features of Theory of Mind",
+    "hit_rank": 1,
+    "result_count": 2,
+    "duration_ms": 2.3469924926757812
+  },
+  {
+    "sample_id": "2602.12146",
+    "sample_title": "Seq2Seq2Seq: Lossless Data Compression via Discret",
+    "query": "Seq2Seq2Seq: Lossless Data Compression via Discrete Latent Transformers and Reinforcement Learning",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 1.7936229705810547
+  },
+  {
+    "sample_id": "2602.12137",
+    "sample_title": "CitiLink-Minutes: A Multilayer Annotated Dataset o",
+    "query": "CitiLink-Minutes: A Multilayer Annotated Dataset of Municipal Meeting Minutes",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 1.775503158569336
+  },
+  {
+    "sample_id": "2602.12135",
+    "sample_title": "WavBench: Benchmarking Reasoning, Colloquialism, a",
+    "query": "WavBench: Benchmarking Reasoning, Colloquialism, and Paralinguistics for End-to-End Spoken Dialogue Models",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 2.3741722106933594
+  },
+  {
+    "sample_id": "2602.12133",
+    "sample_title": "Neutral Prompts, Non-Neutral People: Quantifying G",
+    "query": "Neutral Prompts, Non-Neutral People: Quantifying Gender and Skin-Tone Bias in Gemini Flash 2.5 Image and GPT Image 1.5",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 1.8973350524902344
+  },
+  {
+    "sample_id": "2602.12132",
+    "sample_title": "A Rule-based Computational Model for Gaidhlig Morp",
+    "query": "A Rule-based Computational Model for Gaidhlig Morphology",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 1.8172264099121094
+  },
+  {
+    "sample_id": "2602.12132",
+    "sample_title": "A Rule-based Computational Model for Gaidhlig Morp",
+    "query": "Rule-based Computational Model Gaidhlig Morphology",
+    "hit_rank": null,
+    "result_count": 0,
+    "duration_ms": 169.51632499694824
+  },
+  {
+    "sample_id": "2602.12132",
+    "sample_title": "A Rule-based Computational Model for Gaidhlig Morp",
+    "query": "Peter J Barclay Gaidhlig morphology",
+    "hit_rank": null,
+    "result_count": 0,
+    "duration_ms": 38.87176513671875
+  },
+  {
+    "sample_id": "2602.12125",
+    "sample_title": "Learning beyond Teacher: Generalized On-Policy Dis",
+    "query": "Learning beyond Teacher: Generalized On-Policy Distillation with Reward Extrapolation",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 2.4242401123046875
+  },
+  {
+    "sample_id": "2602.12124",
+    "sample_title": "Capability-Oriented Training Induced Alignment Ris",
+    "query": "Capability-Oriented Training Induced Alignment Risk",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 1.8410682678222656
+  },
+  {
+    "sample_id": "2602.12123",
+    "sample_title": "Meta-Sel: Efficient Demonstration Selection for In",
+    "query": "Meta-Sel: Efficient Demonstration Selection for In-Context Learning via Supervised Meta-Learning",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 1.8036365509033203
+  },
+  {
+    "sample_id": "2602.12116",
+    "sample_title": "P-GenRM: Personalized Generative Reward Model with",
+    "query": "P-GenRM: Personalized Generative Reward Model with Test-time User-based Scaling",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 2.6128292083740234
+  },
+  {
+    "sample_id": "2602.12116",
+    "sample_title": "P-GenRM: Personalized Generative Reward Model with",
+    "query": "Personalized Generative Reward Model with Test-time User-based Scaling",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 376.3425350189209
+  },
+  {
+    "sample_id": "2602.12113",
+    "sample_title": "Stop Unnecessary Reflection: Training LRMs for Eff",
+    "query": "Stop Unnecessary Reflection: Training LRMs for Efficient Reasoning with Adaptive Reflection and Length Coordinated Penalty",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 2.3682117462158203
+  },
+  {
+    "sample_id": "2602.12092",
+    "sample_title": "DeepSight: An All-in-One LM Safety Toolkit",
+    "query": "DeepSight: An All-in-One LM Safety Toolkit",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 2.5205612182617188
+  },
+  {
+    "sample_id": "2602.12078",
+    "sample_title": "Tiny Recursive Reasoning with Mamba-2 Attention Hy",
+    "query": "Tiny Recursive Reasoning with Mamba-2 Attention Hybrid",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 3.2606124877929688
+  },
+  {
+    "sample_id": "2602.12036",
+    "sample_title": "Composition-RL: Compose Your Verifiable Prompts fo",
+    "query": "Composition-RL: Compose Your Verifiable Prompts for Reinforcement Learning of Large Language Models",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 1.874685287475586
+  },
+  {
+    "sample_id": "2602.12018",
+    "sample_title": "Artificial intelligence is creating a new global l",
+    "query": "Artificial intelligence is creating a new global linguistic hierarchy",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 2.366781234741211
+  },
+  {
+    "sample_id": "2602.12015",
+    "sample_title": "Disentangling Ambiguity from Instability in Large ",
+    "query": "Disentangling Ambiguity from Instability in Large Language Models: A Clinical Text-to-SQL Case Study",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 2.395153045654297
+  },
+  {
+    "sample_id": "2602.12015",
+    "sample_title": "Disentangling Ambiguity from Instability in Large ",
+    "query": "Disentangling Ambiguity from Instability Large Language Models Clinical Text-to-SQL",
+    "hit_rank": null,
+    "result_count": 0,
+    "duration_ms": 197.59273529052734
+  },
+  {
+    "sample_id": "2602.12005",
+    "sample_title": "LaCy: What Small Language Models Can and Should Le",
+    "query": "LaCy: What Small Language Models Can and Should Learn is Not Just a Question of Loss",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 1.8541812896728516
+  },
+  {
+    "sample_id": "2602.11982",
+    "sample_title": "Automatic Simplification of Common Vulnerabilities",
+    "query": "Automatic Simplification of Common Vulnerabilities and Exposures Descriptions",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 3.3473968505859375
+  },
+  {
+    "sample_id": "2602.11982",
+    "sample_title": "Automatic Simplification of Common Vulnerabilities",
+    "query": "\"Common Vulnerabilities and Exposures Descriptions\" simplification",
+    "hit_rank": null,
+    "result_count": 0,
+    "duration_ms": 171.97608947753906
+  },
+  {
+    "sample_id": "2602.11982",
+    "sample_title": "Automatic Simplification of Common Vulnerabilities",
+    "query": "2602.11982",
+    "hit_rank": null,
+    "result_count": 0,
+    "duration_ms": 25.40421485900879
+  },
+  {
+    "sample_id": "2602.11968",
+    "sample_title": "DHPLT: large-scale multilingual diachronic corpora",
+    "query": "DHPLT: large-scale multilingual diachronic corpora and word representations for semantic change modelling",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 1.764535903930664
+  },
+  {
+    "sample_id": "2602.11961",
+    "sample_title": "Scaling Model and Data for Multilingual Machine Tr",
+    "query": "Scaling Model and Data for Multilingual Machine Translation with Open Large Language Models",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 1.8422603607177734
+  },
+  {
+    "sample_id": "2602.11960",
+    "sample_title": "Benchmarking Vision-Language Models for French PDF",
+    "query": "Benchmarking Vision-Language Models for French PDF-to-Markdown Conversion",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 1.8000602722167969
+  },
+  {
+    "sample_id": "2602.11958",
+    "sample_title": "RAM-Net: Expressive Linear Attention with Selectiv",
+    "query": "RAM-Net: Expressive Linear Attention with Selectively Addressable Memory",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 2.0341873168945312
+  },
+  {
+    "sample_id": "2602.11939",
+    "sample_title": "Do Large Language Models Adapt to Language Variati",
+    "query": "Do Large Language Models Adapt to Language Variation across Socioeconomic Status?",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 2.1240711212158203
+  },
+  {
+    "sample_id": "2602.11938",
+    "sample_title": "Who is the richest club in the championship? Detec",
+    "query": "Who is the richest club in the championship? Detecting and Rewriting Underspecified Questions Improve QA Performance",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 1.8515586853027344
+  },
+  {
+    "sample_id": "2602.11933",
+    "sample_title": "Cross-Modal Robustness Transfer (CMRT): Training R",
+    "query": "Cross-Modal Robustness Transfer (CMRT): Training Robust Speech Translation Models Using Adversarial Text",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 1.9295215606689453
+  },
+  {
+    "sample_id": "2602.11933",
+    "sample_title": "Cross-Modal Robustness Transfer (CMRT): Training R",
+    "query": "Cross-Modal Robustness Transfer CMRT adversarial text speech translation",
+    "hit_rank": null,
+    "result_count": 0,
+    "duration_ms": 246.1996078491211
+  },
+  {
+    "sample_id": "2602.11931",
+    "sample_title": "AdaptEvolve: Improving Efficiency of Evolutionary ",
+    "query": "AdaptEvolve: Improving Efficiency of Evolutionary AI Agents through Adaptive Model Selection",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 2.033233642578125
+  },
+  {
+    "sample_id": "2602.11931",
+    "sample_title": "AdaptEvolve: Improving Efficiency of Evolutionary ",
+    "query": "Adaptive LLM Selection for Multi-LLM Evolutionary Refinement",
+    "hit_rank": null,
+    "result_count": 0,
+    "duration_ms": 196.8517303466797
+  },
+  {
+    "sample_id": "2602.11931",
+    "sample_title": "AdaptEvolve: Improving Efficiency of Evolutionary ",
+    "query": "AdaptEvolve Evolutionary AI Agents Adaptive Model Selection",
+    "hit_rank": null,
+    "result_count": 0,
+    "duration_ms": 38.55562210083008
+  },
+  {
+    "sample_id": "2602.11908",
+    "sample_title": "When Should LLMs Be Less Specific? Selective Abstr",
+    "query": "When Should LLMs Be Less Specific? Selective Abstraction for Reliable Long-Form Text Generation",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 2.4390220642089844
+  },
+  {
+    "sample_id": "2602.11898",
+    "sample_title": "Benchmark Illusion: Disagreement among LLMs and It",
+    "query": "Benchmark Illusion: Disagreement among LLMs and Its Scientific Consequences",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 2.537965774536133
+  },
+  {
+    "sample_id": "2602.11886",
+    "sample_title": "LLM-based Triplet Extraction from Financial Report",
+    "query": "LLM-based Triplet Extraction from Financial Reports",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 2.352476119995117
+  },
+  {
+    "sample_id": "2602.11877",
+    "sample_title": "Towards Fair and Comprehensive Evaluation of Route",
+    "query": "Towards Fair and Comprehensive Evaluation of Routers in Collaborative LLM Systems",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 2.2792816162109375
+  },
+  {
+    "sample_id": "2602.11871",
+    "sample_title": "DMAP: A Distribution Map for Text",
+    "query": "DMAP: A Distribution Map for Text",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 1.8413066864013672
+  },
+  {
+    "sample_id": "2602.11861",
+    "sample_title": "A$^{2}$V-SLP: Alignment-Aware Variational Modeling",
+    "query": "A$^{2}$V-SLP: Alignment-Aware Variational Modeling for Disentangled Sign Language Production",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 3.484964370727539
+  },
+  {
+    "sample_id": "2602.11861",
+    "sample_title": "A$^{2}$V-SLP: Alignment-Aware Variational Modeling",
+    "query": "Alignment-Aware Variational Modeling for Disentangled Sign Language Production",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 447.38078117370605
+  },
+  {
+    "sample_id": "2602.11858",
+    "sample_title": "Zooming without Zooming: Region-to-Image Distillat",
+    "query": "Zooming without Zooming: Region-to-Image Distillation for Fine-Grained Multimodal Perception",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 1.873016357421875
+  },
+  {
+    "sample_id": "2602.11852",
+    "sample_title": "Prototype Transformer: Towards Language Model Arch",
+    "query": "Prototype Transformer: Towards Language Model Architectures Interpretable by Design",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 87.35394477844238
+  },
+  {
+    "sample_id": "2602.11795",
+    "sample_title": "A Subword Embedding Approach for Variation Detecti",
+    "query": "A Subword Embedding Approach for Variation Detection in Luxembourgish User Comments",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 2.2881031036376953
+  },
+  {
+    "sample_id": "2602.11793",
+    "sample_title": "More Haste, Less Speed: Weaker Single-Layer Waterm",
+    "query": "More Haste, Less Speed: Weaker Single-Layer Watermark Improves Distortion-Free Watermark Ensembles",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 1.8362998962402344
+  },
+  {
+    "sample_id": "2602.11792",
+    "sample_title": "Detecting RLVR Training Data via Structural Conver",
+    "query": "Detecting RLVR Training Data via Structural Convergence of Reasoning",
+    "hit_rank": 1,
+    "result_count": 1,
+    "duration_ms": 2.0246505737304688
+  }
+]

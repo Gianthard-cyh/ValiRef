@@ -1,0 +1,11 @@
+@import '@unocss/reset/tailwind.css';
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background-color: rgba(0, 0, 0, 0.1);
+}

@@ -1,23 +1,23 @@
 import asyncio
 from typing import List, Optional
-from pydantic import BaseModel, Field
-from langchain_deepseek import ChatDeepSeek
-from langchain_core.messages import HumanMessage, SystemMessage
-from langchain.agents import create_agent
 
+from langchain.agents import create_agent
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import StructuredTool
+from langchain_deepseek import ChatDeepSeek
+from pydantic import BaseModel, Field
 
 from ..bench.schema import Paper
 from .config import (
     DEEPSEEK_API_KEY,
-    LLM_MODEL,
     DETECTOR_TEMPERATURE,
-    LLM_MAX_TOKENS,
-    LLM_TIMEOUT,
     LLM_MAX_RETRIES,
+    LLM_MAX_TOKENS,
+    LLM_MODEL,
+    LLM_TIMEOUT,
 )
-from .tools import AggregateSearchFactory
 from .logger import logger
+from .tools import AggregateSearchFactory
 
 # Agent execution timeout in seconds
 AGENT_TIMEOUT = 120
@@ -76,8 +76,8 @@ class HallucinationDetector:
         # Get description from aggregate_search_instance if available
         description = getattr(
             self.aggregate_search_instance,
-            'get_tool_description',
-            lambda: "Search for papers matching the query."
+            "get_tool_description",
+            lambda: "Search for papers matching the query.",
         )()
 
         return [
@@ -113,7 +113,13 @@ class HallucinationDetector:
             evidence: URLs found that support the judgment
         """
         # Validate input
-        valid_types = {"Real", "Fabrication", "AttributionError", "Irrelevance", "Counterfactual"}
+        valid_types = {
+            "Real",
+            "Fabrication",
+            "AttributionError",
+            "Irrelevance",
+            "Counterfactual",
+        }
         if hallucination_type not in valid_types:
             raise ValueError(
                 f"Invalid hallucination_type: {hallucination_type}. "
@@ -129,7 +135,7 @@ class HallucinationDetector:
 
     def _get_system_prompt(self) -> str:
         return (
-            "You are a scientific fact-checker. Verify if a reference is REAL or HALLUCINATED.\n"
+            "You are a academic reference checker. Verify if a reference is REAL or HALLUCINATED.\n"
             "You have access to aggregate_search to query academic databases.\n"
             "\n"
             "Classification Categories (choose EXACTLY ONE):\n"
@@ -140,17 +146,17 @@ class HallucinationDetector:
             "- **Counterfactual**: Paper exists, authors match, BUT claims are opposite of paper's conclusions\n"
             "\n"
             "Instructions:\n"
-            "1. Search using paper title OR ArXiv ID if available\n"
+            "1. Search using paper title. If not found, you can also search abstract.\n"
             "2. Examine ALL search results returned (not just the first one)\n"
             "3. Compare titles allowing for minor variations (capitalization, punctuation)\n"
-            "4. Verify author names - the listed authors should be a SUBSET of actual authors\n"
+            "4. Verify author names\n"
             "5. Check claims consistency with abstract/content\n"
             "6. Call submit_validation_result with hallucination_type='CategoryName'\n"
             "\n"
             "IMPORTANT:\n"
+            "- Only include title or abstract in you query. DO NOT use IDs or authors since the tool only uses the title and abstract as key.\n"
             "- You MUST specify the exact hallucination_type: Real, Fabrication, AttributionError, "
             "Irrelevance, or Counterfactual\n"
-            "- Partial author lists are ACCEPTABLE (e.g., first 3 authors of 7). Only flag if names are WRONG.\n"
             "- If search returns multiple results, check each one. Target paper may be result #2 or #3.\n"
             "- Do NOT keep searching once you find a matching paper - verify and submit.\n"
         )
@@ -184,7 +190,9 @@ class HallucinationDetector:
                             # Handle legacy format with is_hallucination
                             if "hallucination_type" not in args:
                                 is_hallu = args.get("is_hallucination", True)
-                                args["hallucination_type"] = "Fabrication" if is_hallu else "Real"
+                                args["hallucination_type"] = (
+                                    "Fabrication" if is_hallu else "Real"
+                                )
                             return ValidationResult(**args)
                         except Exception as e:
                             logger.error(f"Failed to parse tool args: {e}")
@@ -213,7 +221,11 @@ class HallucinationDetector:
         """
         logger.info(f"Checking reference (async): {reference.title}")
 
-        claims_text = "\n".join([f"  - {c}" for c in reference.claims]) if reference.claims else "  (none provided)"
+        claims_text = (
+            "\n".join([f"  - {c}" for c in reference.claims])
+            if reference.claims
+            else "  (none provided)"
+        )
         user_prompt = (
             f"Target Reference:\n"
             f"Title: {reference.title}\n"

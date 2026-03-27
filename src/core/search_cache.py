@@ -80,7 +80,7 @@ class SearchCache:
             del self._cache[key]
             return None
 
-        logger.debug(f"Cache HIT for {tool_name}: {query[:50]}...")
+        logger.debug(f"Cache hit for {tool_name}: {query[:50]}...")
         return entry.get("data")
 
     def set(self, tool_name: str, query: str, limit: int, data: List[Dict]):

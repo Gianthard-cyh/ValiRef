@@ -30,7 +30,7 @@ if LANGCHAIN_TRACING_V2 and not LANGCHAIN_API_KEY:
 LLM_MODEL = "deepseek-chat"
 LLM_TEMPERATURE = 0.7
 LLM_MAX_TOKENS = 4096
-LLM_TIMEOUT = 60
+LLM_TIMEOUT = 120
 LLM_MAX_RETRIES = 2
 
 # Detector Configuration
@@ -88,3 +88,25 @@ CROSSENCODER_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 CROSSENCODER_DEVICE = "cpu"
 CROSSENCODER_MAX_LENGTH = 512
 RERANK_CANDIDATE_MULTIPLIER = 4  # Fetch Nx candidates for reranking
+
+# RabbitMQ Configuration
+RABBITMQ_URL = os.environ.get("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
+RABBITMQ_QUEUE_NAME = os.environ.get("RABBITMQ_QUEUE_NAME", "valiref_pdf_validation")
+RABBITMQ_DLQ_NAME = os.environ.get("RABBITMQ_DLQ_NAME", "valiref_pdf_validation_dlq")
+RABBITMQ_DLX_NAME = os.environ.get("RABBITMQ_DLX_NAME", "valiref_pdf_validation_dlx")
+RABBITMQ_MAX_RETRIES = int(os.environ.get("RABBITMQ_MAX_RETRIES", "3"))
+RABBITMQ_MESSAGE_TTL = int(
+    os.environ.get("RABBITMQ_MESSAGE_TTL", "300000")
+)  # 5 minutes
+
+# API Configuration
+API_HOST = os.environ.get("API_HOST", "0.0.0.0")
+API_PORT = int(os.environ.get("API_PORT", "8000"))
+API_MAX_UPLOAD_SIZE = int(os.environ.get("API_MAX_UPLOAD_SIZE", "50"))  # MB
+
+# Worker Configuration
+WORKER_CONCURRENCY = int(os.environ.get("WORKER_CONCURRENCY", "2"))
+WORKER_PREFETCH_COUNT = int(os.environ.get("WORKER_PREFETCH_COUNT", "5"))
+
+# PDF Storage
+PDF_STORAGE_PATH = os.environ.get("PDF_STORAGE_PATH", "/tmp/valiref/pdfs")

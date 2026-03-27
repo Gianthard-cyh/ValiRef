@@ -1,9 +1,10 @@
-version: '3.8'
+# Docker Compose for Infrastructure Only
+# 只启动基础设施服务，代码在宿主机直接运行
 
 services:
   postgres:
     image: paradedb/paradedb:latest
-    container_name: valiref-paradedb
+    container_name: valiref-postgres
     environment:
       POSTGRES_USER: valiref
       POSTGRES_PASSWORD: valiref_secret
@@ -12,7 +13,6 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
-    # 内存限制（4GB服务器适配）
     deploy:
       resources:
         limits:
@@ -36,6 +36,23 @@ services:
       - postgres
     restart: unless-stopped
 
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: valiref-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
 volumes:
   postgres_data:
-    driver: local
+  rabbitmq_data:

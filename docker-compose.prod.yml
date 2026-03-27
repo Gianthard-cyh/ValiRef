@@ -1,0 +1,119 @@
+# Docker Compose for Production
+# 生产环境 - 所有服务容器化运行
+
+services:
+  postgres:
+    image: paradedb/paradedb:latest
+    container_name: valiref-postgres
+    environment:
+      POSTGRES_USER: valiref
+      POSTGRES_PASSWORD: valiref_secret
+      POSTGRES_DB: arxiv_db
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    deploy:
+      resources:
+        limits:
+          memory: 1.5G
+        reservations:
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U valiref -d arxiv_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - valiref-network
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: valiref-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - valiref-network
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: valiref-api
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: valiref
+      DB_PASSWORD: valiref_secret
+      DB_NAME: arxiv_db
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      RABBITMQ_QUEUE_NAME: valiref_pdf_validation
+      RABBITMQ_DLQ_NAME: valiref_pdf_validation_dlq
+      RABBITMQ_DLX_NAME: valiref_pdf_validation_dlx
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      API_MAX_UPLOAD_SIZE: 50
+      PDF_STORAGE_PATH: /tmp/valiref/pdfs
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+    volumes:
+      - pdf_storage:/tmp/valiref/pdfs
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - valiref-network
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: valiref-worker
+    command: python -m src.api.worker.consumer
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: valiref
+      DB_PASSWORD: valiref_secret
+      DB_NAME: arxiv_db
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      RABBITMQ_QUEUE_NAME: valiref_pdf_validation
+      RABBITMQ_DLQ_NAME: valiref_pdf_validation_dlq
+      RABBITMQ_DLX_NAME: valiref_pdf_validation_dlx
+      RABBITMQ_MAX_RETRIES: 3
+      WORKER_CONCURRENCY: 2
+      WORKER_PREFETCH_COUNT: 5
+      PDF_STORAGE_PATH: /tmp/valiref/pdfs
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+    volumes:
+      - pdf_storage:/tmp/valiref/pdfs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - valiref-network
+    restart: unless-stopped
+    # Scale: docker-compose -f docker-compose.prod.yml up -d --scale worker=3
+
+volumes:
+  postgres_data:
+  rabbitmq_data:
+  pdf_storage:
+
+networks:
+  valiref-network:
+    driver: bridge
