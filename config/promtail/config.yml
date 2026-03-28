@@ -1,95 +1,37 @@
 server:
   http_listen_port: 9080
-  grpc_listen_port: 0
   log_level: info
 
 positions:
   filename: /tmp/positions.yaml
-  sync_period: 10s
 
 clients:
   - url: http://loki:3100/loki/api/v1/push
-    batchwait: 1s
-    batchsize: 1048576
-    timeout: 10s
-    backoff_config:
-      min_period: 100ms
-      max_period: 5s
-      max_retries: 10
 
 scrape_configs:
-  # 收集 ValiRef 项目容器日志
-  - job_name: valiref-containers
+  - job_name: valiref-logs
     static_configs:
       - targets:
           - localhost
         labels:
           job: valiref
-          __path__: /var/lib/docker/containers/*/*.log
-
-    # 只处理容器名以 valiref- 开头的日志
+          __path__: /var/lib/docker/containers/*/*-json.log
     pipeline_stages:
-      # 解析 Docker JSON 日志
+      # 解析 Docker JSON 格式
       - json:
           expressions:
             log: log
             stream: stream
             attrs: attrs
-            time: time
-
-      # 提取容器属性
+      # 从 attrs 提取容器名
       - json:
           expressions:
-            tag:
+            container_name: "['io.docker.compose.service']"
           source: attrs
-
-      # 提取容器名称
-      - regex:
-          expression: (?P<container_name>(?:[^|])*[^|])
-          source: tag
-
-      # 只保留 valiref- 开头的容器（过滤其他服务）
-      - regex:
-          expression: (?P<service_name>valiref-.*)
-          source: container_name
-
-      # 提取服务类型（api/worker/postgres等）
-      - regex:
-          expression: valiref-(?P<service_type>\w+)
-          source: container_name
-
-      # 解析时间戳
-      - timestamp:
-          format: RFC3339Nano
-          source: time
-
-      # 提取为标签
+      # 设置标签
       - labels:
-          stream:
           container_name:
-          service_name:
-          service_type:
-
+          stream:
       # 输出日志内容
-      - output:
-          source: log
-
-      # 尝试解析 JSON 结构化日志
-      - json:
-          expressions:
-            level: level
-            message: message
-            module: module
-          source: log
-
-      # 提取日志级别
-      - labels:
-          level:
-
-      # 最终输出格式
-      - output:
-          source: message
-
-      # 如果没有 message 字段，保留原始 log
       - output:
           source: log

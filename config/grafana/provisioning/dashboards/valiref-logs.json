@@ -41,7 +41,7 @@
       },
       "targets": [
         {
-          "expr": "{service_name=~\"valiref-.*\"} |= \"\"",
+          "expr": "{container_name=~\"valiref-.*\"}",
           "refId": "A"
         }
       ],
@@ -67,7 +67,7 @@
       },
       "targets": [
         {
-          "expr": "{service_type=\"api\"} |= \"\"",
+          "expr": "{container_name=\"valiref-api\"}",
           "refId": "A"
         }
       ],
@@ -93,7 +93,7 @@
       },
       "targets": [
         {
-          "expr": "{service_type=\"worker\"} |= \"\"",
+          "expr": "{container_name=\"valiref-worker\"}",
           "refId": "A"
         }
       ],
