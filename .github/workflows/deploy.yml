@@ -228,10 +228,10 @@ jobs:
             export IMAGE_TAG=${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'latest' }}
 
             echo "登录腾讯云容器仓库"
-            docker login ${{ env.REGISTRY }} -u ${{ secrets.TENCENT_CLOUD_USERNAME }} -p ${{ secrets.TENCENT_CLOUD_PASSWORD }}
+            sudo docker login ${{ env.REGISTRY }} -u ${{ secrets.TENCENT_CLOUD_USERNAME }} -p ${{ secrets.TENCENT_CLOUD_PASSWORD }}
 
             echo "拉取最新镜像"
-            docker pull ${{ env.REGISTRY }}/${{ env.TCR_NAMESPACE }}/${{ env.IMAGE_NAME }}:${IMAGE_TAG}
+            sudo docker pull ${{ env.REGISTRY }}/${{ env.TCR_NAMESPACE }}/${{ env.IMAGE_NAME }}:${IMAGE_TAG}
 
             echo "重启服务"
             sudo docker compose -f docker-compose.prod.yml down
@@ -244,7 +244,7 @@ jobs:
             sudo docker compose -f docker-compose.prod.yml ps
 
             echo "清理旧镜像"
-            docker image prune -af --filter "until=24h" || true
+            sudo docker image prune -af --filter "until=24h" || true
 
             echo "部署完成!"
 
