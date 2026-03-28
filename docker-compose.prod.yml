@@ -66,8 +66,9 @@ services:
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
     volumes:
       - pdf_storage:/tmp/valiref/pdfs
-    ports:
-      - "8081:8000"
+    # API 不直接暴露，通过 Caddy 反向代理访问
+    # ports:
+    #   - "8081:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -112,30 +113,15 @@ services:
     restart: unless-stopped
     # Scale: docker-compose -f docker-compose.prod.yml up -d --scale worker=3
 
-  # 前端构建服务（一次性运行）
-  frontend-build:
-    image: node:20-alpine
-    container_name: valiref-frontend-build
-    working_dir: /app
-    volumes:
-      - ./frontend:/app
-      - frontend_dist:/app/.output
-    command: >
-      sh -c "npm install -g pnpm &&
-             pnpm install &&
-             pnpm run build"
-    profiles:
-      - build
-
   # Caddy 反向代理
   caddy:
     image: caddy:2-alpine
     container_name: valiref-caddy
     ports:
-      - "8082:8082"
+      - "${CADDY_PORT:-8080}:80"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - frontend_dist:/usr/share/caddy/html:ro
+      - ./frontend/.output/public:/usr/share/caddy/html:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
@@ -150,7 +136,6 @@ volumes:
   pdf_storage:
   caddy_data:
   caddy_config:
-  frontend_dist:
 
 networks:
   valiref-network:
