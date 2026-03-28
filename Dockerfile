@@ -1,32 +1,27 @@
-# ValiRef API Service Dockerfile - 优化版
+# ValiRef API Service Dockerfile
 FROM python:3.12-slim
 
 WORKDIR /app
 
-# 1. 安装系统依赖（这层很少变）
+# 系统依赖
 RUN apt-get update && apt-get install -y \
     gcc \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. 安装 uv
+# 安装 uv
 RUN pip install uv
 
-# 3. 先只复制依赖定义文件（这层变化频率低）
+# 先复制 lock 和 toml（利用缓存）
 COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-install-project
 
-# 4. 安装 CPU 版 PyTorch + 其他依赖（利用 Docker 缓存）
-RUN uv pip install --system torch --index-url https://download.pytorch.org/whl/cpu && \
-    uv sync --frozen --no-install-project
-
-# 5. 复制代码（这层变化频率高）
+# 复制代码
 COPY src/ ./src/
 
-# 6. 安装项目代码（快速，因为依赖已在）
+# 安装项目
 RUN uv sync --frozen
 
-# 设置环境
-ENV PYTHONPATH=/app
 ENV PATH="/app/.venv/bin:$PATH"
 
 EXPOSE 8000
