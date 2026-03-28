@@ -251,4 +251,4 @@ jobs:
       - name: Health check
         run: |
           sleep 5
-          curl -f http://${{ secrets.DEPLOY_HOST }}/api/health || echo "⚠️ 健康检查失败"
+          curl -f http://${{ secrets.DEPLOY_HOST }}:8082/api/health || echo "⚠️ 健康检查失败"

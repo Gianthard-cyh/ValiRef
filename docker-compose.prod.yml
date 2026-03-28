@@ -118,7 +118,7 @@ services:
     image: caddy:2-alpine
     container_name: valiref-caddy
     ports:
-      - "${CADDY_PORT:-8080}:80"
+      - "${CADDY_PORT:-8082}:80"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./frontend/.output/public:/usr/share/caddy/html:ro
