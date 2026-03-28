@@ -1,0 +1,94 @@
+# Docker Compose for Monitoring
+# Loki + Grafana + Prometheus 监控栈
+# 使用方式:
+#   docker-compose -f docker-compose.monitoring.yml up -d
+
+services:
+  # 日志收集器 - 自动发现 Docker 容器日志
+  promtail:
+    image: grafana/promtail:2.9.0
+    container_name: valiref-promtail
+    volumes:
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - ./config/promtail:/etc/promtail:ro
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - valiref-network
+    restart: unless-stopped
+
+  # 日志存储和查询
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: valiref-loki
+    ports:
+      - "${LOKI_PORT:-3100}:3100"
+    volumes:
+      - ./config/loki:/etc/loki:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/loki-config.yaml
+    networks:
+      - valiref-network
+    restart: unless-stopped
+
+  # 指标收集
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: valiref-prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./config/prometheus:/etc/prometheus:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=15d'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    networks:
+      - valiref-network
+    restart: unless-stopped
+
+  # 容器资源监控
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.47.2
+    container_name: valiref-cadvisor
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+    networks:
+      - valiref-network
+    restart: unless-stopped
+
+  # 可视化面板
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: valiref-grafana
+    ports:
+      - "${GRAFANA_PORT:-8083}:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-lokiexplore-app
+      - GF_SERVER_ROOT_URL=${GRAFANA_ROOT_URL:-http://localhost:8083}
+    networks:
+      - valiref-network
+    restart: unless-stopped
+
+volumes:
+  loki_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  valiref-network:
+    external: true

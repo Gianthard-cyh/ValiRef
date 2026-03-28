@@ -9,3 +9,11 @@ wheels/
 # Virtual environments
 .venv
 .env
+.env.*
+!.env.*.example
+
+# Monitoring data
+config/grafana/dashboards/custom/
+loki_data/
+prometheus_data/
+grafana_data/
