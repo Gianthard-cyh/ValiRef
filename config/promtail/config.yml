@@ -23,14 +23,14 @@ scrape_configs:
             log: log
             stream: stream
             attrs: attrs
-      # 从 attrs 提取容器名
+      # 从 attrs 提取服务名（docker-compose 服务名）
       - json:
           expressions:
-            container_name: "['io.docker.compose.service']"
+            service_name: "com.docker.compose.service"
           source: attrs
       # 设置标签
       - labels:
-          container_name:
+          service_name:
           stream:
       # 输出日志内容
       - output:
