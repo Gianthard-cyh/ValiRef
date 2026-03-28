@@ -44,7 +44,7 @@ services:
     restart: unless-stopped
 
   api:
-    image: ${DOCKER_REGISTRY:-ccr.ccs.tencentyun.com}/${DOCKER_NAMESPACE:-valiref}/${DOCKER_IMAGE:-valiref-backend}:${IMAGE_TAG:-latest}
+    image: ${DOCKER_REGISTRY:-sgccr.ccs.tencentyun.com}/${DOCKER_NAMESPACE:-valiref}/${DOCKER_IMAGE:-valiref-backend}:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile
@@ -66,9 +66,8 @@ services:
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
     volumes:
       - pdf_storage:/tmp/valiref/pdfs
-    # 不暴露端口，只通过 caddy 访问
-    # ports:
-    #   - "8000:8000"
+    ports:
+      - "8081:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -79,7 +78,7 @@ services:
     restart: unless-stopped
 
   worker:
-    image: ${DOCKER_REGISTRY:-ccr.ccs.tencentyun.com}/${DOCKER_NAMESPACE:-valiref}/${DOCKER_IMAGE:-valiref-backend}:${IMAGE_TAG:-latest}
+    image: ${DOCKER_REGISTRY:-sgccr.ccs.tencentyun.com}/${DOCKER_NAMESPACE:-valiref}/${DOCKER_IMAGE:-valiref-backend}:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile
@@ -133,8 +132,7 @@ services:
     image: caddy:2-alpine
     container_name: valiref-caddy
     ports:
-      - "80:80"
-      - "443:443"
+      - "8082:8082"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - frontend_dist:/usr/share/caddy/html:ro
