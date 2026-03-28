@@ -15,9 +15,9 @@ RUN pip install uv
 # 3. 先只复制依赖定义文件（这层变化频率低）
 COPY pyproject.toml uv.lock ./
 
-# 4. 安装项目依赖（不含代码，利用 Docker 缓存）
-# --no-install-project 只安装依赖，不安装项目本身
-RUN uv sync --frozen --no-install-project
+# 4. 安装 CPU 版 PyTorch + 其他依赖（利用 Docker 缓存）
+RUN uv pip install --system torch --index-url https://download.pytorch.org/whl/cpu && \
+    uv sync --frozen --no-install-project
 
 # 5. 复制代码（这层变化频率高）
 COPY src/ ./src/
