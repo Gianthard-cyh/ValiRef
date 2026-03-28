@@ -3,7 +3,12 @@
     admin off
 }
 
-:8082 {
+:80 {
+    # API 代理
+    handle_path /api/* {
+        reverse_proxy api:8000
+    }
+
     # 前端静态文件
     root * /usr/share/caddy/html
     file_server
