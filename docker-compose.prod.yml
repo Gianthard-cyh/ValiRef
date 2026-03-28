@@ -66,9 +66,9 @@ services:
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
     volumes:
       - pdf_storage:/tmp/valiref/pdfs
-    # API 不直接暴露，通过 Caddy 反向代理访问
-    # ports:
-    #   - "8081:8000"
+    # API 暴露给宿主机，由全局 Caddy 反代
+    ports:
+      - "127.0.0.1:8001:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -113,29 +113,10 @@ services:
     restart: unless-stopped
     # Scale: docker-compose -f docker-compose.prod.yml up -d --scale worker=3
 
-  # Caddy 反向代理
-  caddy:
-    image: caddy:2-alpine
-    container_name: valiref-caddy
-    ports:
-      - "${CADDY_PORT:-8082}:80"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./frontend/.output/public:/usr/share/caddy/html:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - api
-    networks:
-      - valiref-network
-    restart: unless-stopped
-
 volumes:
   postgres_data:
   rabbitmq_data:
   pdf_storage:
-  caddy_data:
-  caddy_config:
 
 networks:
   valiref-network:
