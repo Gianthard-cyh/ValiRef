@@ -40,10 +40,10 @@
       <div v-if="pageState === 'idle' || pageState === 'error'" class="relative">
         <!-- Diagonal pattern background - light mode -->
         <div class="absolute inset-0 pointer-events-none dark:hidden bg-surface-tertiary"
-             style="background-image: repeating-linear-gradient(315deg, var(--pattern-fg, #d4d4d4) 0, var(--pattern-fg, #d4d4d4) 1px, transparent 0, transparent 50%); background-size: 10px 10px;" />
+             style="background-image: repeating-linear-gradient(315deg, var(--pattern-fg, #d4d4d4) 0, var(--pattern-fg, #d4d4d4) 1px, transparent 0, transparent 50%); background-size: 30px 30px;" />
         <!-- Diagonal pattern background - dark mode -->
         <div class="absolute inset-0 pointer-events-none hidden dark:block bg-surface-dark-tertiary"
-             style="background-image: repeating-linear-gradient(315deg, var(--pattern-fg-dark, #404040) 0, var(--pattern-fg-dark, #404040) 1px, transparent 0, transparent 50%); background-size: 10px 10px;" />
+             style="background-image: repeating-linear-gradient(315deg, var(--pattern-fg-dark, #404040) 0, var(--pattern-fg-dark, #404040) 1px, transparent 0, transparent 50%); background-size: 30px 30px;" />
 
         <UploadView />
       </div>
