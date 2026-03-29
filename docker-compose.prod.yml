@@ -64,6 +64,8 @@ services:
       API_MAX_UPLOAD_SIZE: 50
       PDF_STORAGE_PATH: /tmp/valiref/pdfs
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      # HuggingFace 国内镜像
+      HF_ENDPOINT: https://hf-mirror.com
     volumes:
       - pdf_storage:/tmp/valiref/pdfs
     # API 暴露给宿主机，由全局 Caddy 反代
@@ -101,6 +103,8 @@ services:
       WORKER_PREFETCH_COUNT: 5
       PDF_STORAGE_PATH: /tmp/valiref/pdfs
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      # HuggingFace 国内镜像
+      HF_ENDPOINT: https://hf-mirror.com
     volumes:
       - pdf_storage:/tmp/valiref/pdfs
     depends_on:
