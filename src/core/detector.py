@@ -16,6 +16,7 @@ from .config import (
     LLM_MODEL,
     LLM_TIMEOUT,
 )
+from .exceptions import ValidationError, ValidationTimeoutError, AgentParseError
 from .logger import logger
 from .tools import AggregateSearchFactory
 
@@ -196,16 +197,12 @@ class HallucinationDetector:
                             return ValidationResult(**args)
                         except Exception as e:
                             logger.error(f"Failed to parse tool args: {e}")
+                            raise AgentParseError(f"Failed to parse agent output: {e}") from e
 
         logger.warning(
             "Agent did not call submit_validation_result. Returning inconclusive result."
         )
-        return ValidationResult(
-            hallucination_type="Fabrication",  # Default to Fabrication on error
-            confidence=0.0,
-            reasoning="Agent failed to submit a result.",
-            evidence=[],
-        )
+        raise AgentParseError("Agent failed to submit a result")
 
     async def check_reference(self, reference: Paper) -> ValidationResult:
         """
@@ -257,20 +254,15 @@ class HallucinationDetector:
             logger.error(
                 f"Agent timeout after {AGENT_TIMEOUT}s for: {reference.title[:50]}..."
             )
-            return ValidationResult(
-                hallucination_type="Fabrication",
-                confidence=0.5,
-                reasoning=f"Validation timeout after {AGENT_TIMEOUT}s - agent took too long to respond",
-                evidence=[],
+            raise ValidationTimeoutError(
+                f"Validation timeout after {AGENT_TIMEOUT}s - agent took too long to respond"
             )
         except KeyboardInterrupt:
             logger.warning("Validation interrupted by user.")
             raise
+        except AgentParseError:
+            # Re-raise AgentParseError as-is
+            raise
         except Exception as e:
             logger.error(f"Agent validation failed: {e}")
-            return ValidationResult(
-                hallucination_type="Unknown",
-                confidence=0.0,
-                reasoning=f"Validation failed due to error: {e}",
-                evidence=[],
-            )
+            raise ValidationError(f"Validation failed: {e}") from e

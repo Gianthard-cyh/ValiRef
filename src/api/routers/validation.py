@@ -68,7 +68,11 @@ async def get_result(request: Request, task_id: str):
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    result = json.loads(task.get("result")) or {}
+    result = task.get("result")
+    if isinstance(result, str):
+        result = json.loads(result) or {}
+    elif result is None:
+        result = {}
 
     return PDFValidationResult(
         task_id=task["task_id"],

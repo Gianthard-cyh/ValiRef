@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, AsyncMock, patch
 
 from src.core.pipeline import ValidationPipeline
 from src.bench.schema import Paper
+from src.core.exceptions import ExtractionError, ValidationError
 
 
 class TestValidationPipeline:
@@ -147,8 +148,8 @@ class TestValidationPipeline:
         mock_callback.on_pipeline_end.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_process_pdf_handles_extraction_error(self, tmp_path):
-        """Test process_pdf handles extraction errors gracefully."""
+    async def test_process_pdf_raises_on_extraction_error(self, tmp_path):
+        """Test process_pdf raises ExtractionError on extraction failure."""
         pdf_file = tmp_path / "test.pdf"
         pdf_file.write_bytes(b"fake pdf content")
 
@@ -163,10 +164,9 @@ class TestValidationPipeline:
             callbacks=[mock_callback],
         )
 
-        result = await pipeline.process_pdf(str(pdf_file), max_workers=1)
+        with pytest.raises(ExtractionError):
+            await pipeline.process_pdf(str(pdf_file), max_workers=1)
 
-        assert result["status"] == "failed"
-        assert "error" in result
         mock_callback.on_error.assert_called_once()
 
     @pytest.mark.asyncio
@@ -210,7 +210,7 @@ class TestValidationPipeline:
 
         mock_detector = MagicMock()
         mock_detector.check_reference = AsyncMock(
-            side_effect=Exception("Validation failed")
+            side_effect=ValidationError("Validation failed")
         )
 
         mock_callback = MagicMock()
@@ -227,6 +227,7 @@ class TestValidationPipeline:
         assert result["status"] == "completed"
         assert result["references_count"] == 1
         assert result["validated_count"] == 1  # Error is captured as a result
+        assert result["results"][0]["status"] == "error"
 
     def test_process_pdf_raises_for_missing_file(self):
         """Test process_pdf raises error for non-existent file."""

@@ -102,7 +102,7 @@ class TestHallucinationDetector:
 
     @pytest.mark.asyncio
     async def test_check_reference_handles_agent_timeout(self):
-        """Test check_reference handles agent timeout."""
+        """Test check_reference raises ValidationTimeoutError on agent timeout."""
         mock_llm = MagicMock()
         mock_search = MagicMock()
 
@@ -124,17 +124,13 @@ class TestHallucinationDetector:
                     url="http://example.com",
                 )
 
-                result = await detector.check_reference(paper)
-
-                assert isinstance(result, ValidationResult)
-                assert (
-                    result.hallucination_type == "Fabrication"
-                )  # Timeout treated as hallucination
-                assert result.is_hallucination is True
+                from src.core.exceptions import ValidationTimeoutError
+                with pytest.raises(ValidationTimeoutError):
+                    await detector.check_reference(paper)
 
     @pytest.mark.asyncio
     async def test_check_reference_handles_no_tool_calls(self):
-        """Test check_reference when agent doesn't call submit_validation_result."""
+        """Test check_reference raises AgentParseError when agent doesn't call submit_validation_result."""
         mock_llm = MagicMock()
         mock_search = MagicMock()
 
@@ -159,12 +155,9 @@ class TestHallucinationDetector:
                     url="http://example.com",
                 )
 
-                result = await detector.check_reference(paper)
-
-                assert isinstance(result, ValidationResult)
-                assert result.hallucination_type == "Fabrication"
-                assert result.is_hallucination is True
-                assert "Agent failed to submit" in result.reasoning
+                from src.core.exceptions import AgentParseError
+                with pytest.raises(AgentParseError):
+                    await detector.check_reference(paper)
 
 
 class TestValidationResult:

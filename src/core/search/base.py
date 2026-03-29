@@ -13,6 +13,7 @@ from ..config import (
     CIRCUIT_BREAKER_RECOVERY_TIMEOUT,
     TOKEN_BUCKET_BURST_SIZE,
 )
+from ..exceptions import SearchError
 from ..logger import logger
 from ..search_cache import get_cache
 from ..search_queue import CircuitBreakerOpen, SearchTask, ToolRequestQueue
@@ -183,7 +184,7 @@ class SearchTool:
             self._emit_end_signal(
                 tool_name, query, start_time, False, 0, e.__class__.__name__
             )
-            return []
+            raise SearchError(f"Search failed for '{query}': {e}") from e
 
     def _emit_end_signal(
         self,

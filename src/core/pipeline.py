@@ -6,6 +6,7 @@ import time
 from .extract import PDFExtractor
 from .detector import HallucinationDetector
 from .logger import logger
+from .exceptions import ExtractionError, ValidationError, ValidationTimeoutError, AgentParseError, SearchError
 from ..bench.schema import Paper
 from .callbacks import ValidationCallback
 
@@ -48,9 +49,7 @@ class ValidationPipeline:
         except Exception as e:
             logger.error(f"Extraction failed: {e}")
             self._notify_callbacks("on_error", e)
-            return self._create_summary(
-                path.name, start_time, error=str(e), status="failed"
-            )
+            raise ExtractionError(f"Failed to extract references from {path.name}: {e}") from e
 
         if not references:
             logger.warning("No references found.")
@@ -109,8 +108,14 @@ class ValidationPipeline:
                     self._notify_callbacks(
                         "on_reference_validation_end", references[index], result
                     )
+            except (ValidationError, ValidationTimeoutError, AgentParseError, SearchError) as e:
+                # Business exceptions are already handled in _validate_single_reference
+                # This should not happen, but log just in case
+                logger.warning(f"Unexpected business exception in task: {e}")
             except Exception as e:
-                logger.error(f"Task error: {e}")
+                # Unexpected exceptions: re-raise to fail the entire task
+                logger.error(f"Unexpected task error: {e}")
+                raise
 
         return results
 
@@ -134,19 +139,24 @@ class ValidationPipeline:
             }
             return result
 
-        except Exception as e:
-            logger.error(f"Error checking reference '{paper.title}': {e}")
+        except (ValidationError, ValidationTimeoutError, AgentParseError, SearchError) as e:
+            # Business exceptions: convert to error result, task continues
+            logger.error(f"Validation failed for reference '{paper.title}': {e}")
             self._notify_callbacks("on_reference_validation_error", paper, e)
             return {
                 "paper": paper.model_dump(),
                 "validation": {
                     "is_hallucination": None,
                     "confidence": 0.0,
-                    "reasoning": f"Validation process error: {str(e)}",
+                    "reasoning": f"Validation failed: {str(e)}",
                     "evidence": [],
                 },
                 "status": "error",
             }
+        except Exception as e:
+            # Unknown exceptions: raise to fail the entire task
+            logger.error(f"Unexpected error checking reference '{paper.title}': {e}")
+            raise
 
     def _create_summary(
         self,

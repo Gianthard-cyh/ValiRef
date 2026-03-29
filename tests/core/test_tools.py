@@ -55,7 +55,7 @@ class TestSearchTools:
     @patch("src.core.search.sources.arxiv.httpx.AsyncClient")
     def test_arxiv_search_failure(self, mock_client_cls):
         """
-        Test ArxivSearch failure handling.
+        Test ArxivSearch raises SearchError on failure.
         """
 
         async def run_test():
@@ -67,10 +67,9 @@ class TestSearchTools:
             mock_client_cls.return_value = mock_client
 
             tool = ArxivSearch()
-            results = await tool.asearch("Query")
-
-            # Should return empty list on error
-            assert results == []
+            from src.core.exceptions import SearchError
+            with pytest.raises(SearchError):
+                await tool.asearch("Query")
 
         asyncio.run(run_test())
 
@@ -167,7 +166,7 @@ class TestSearchTools:
     @patch("src.core.search.sources.openalex.httpx.AsyncClient")
     def test_openalex_search_failure(self, mock_client_cls):
         """
-        Test OpenAlexSearch failure handling.
+        Test OpenAlexSearch raises SearchError on failure.
         """
 
         async def run_test():
@@ -178,9 +177,9 @@ class TestSearchTools:
             mock_client_cls.return_value = mock_client
 
             tool = OpenAlexSearch()
-            results = await tool.asearch("Query")
-
-            assert results == []
+            from src.core.exceptions import SearchError
+            with pytest.raises(SearchError):
+                await tool.asearch("Query")
 
         asyncio.run(run_test())
 
