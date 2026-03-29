@@ -36,6 +36,40 @@ export const useTaskStore = defineStore('task', () => {
     }
   }
 
+  // Refresh processing tasks on init
+  async function refreshProcessingTasks() {
+    const processingTasks = taskHistory.value.filter(t =>
+      ['pending', 'processing', 'retrying'].includes(t.status)
+    );
+
+    if (processingTasks.length === 0) return;
+
+    const { getTaskStatus, getValidationResult } = useApi();
+
+    for (const task of processingTasks) {
+      try {
+        const status = await getTaskStatus(task.task_id);
+
+        // Task completed - fetch result and update
+        if (status.status === 'completed') {
+          const result = await getValidationResult(task.task_id);
+          addToHistory(task.task_id, task.filename, 'completed', result);
+          continue;
+        }
+
+        // Task failed - update status
+        if (['failed', 'failed_permanently'].includes(status.status)) {
+          addToHistory(task.task_id, task.filename, status.status);
+          continue;
+        }
+
+        // Still processing - status already matches, no update needed
+      } catch (e) {
+        console.error(`Failed to refresh task ${task.task_id}:`, e);
+      }
+    }
+  }
+
   // Save history to localStorage
   function saveHistory() {
     if (process.client) {
@@ -222,6 +256,7 @@ export const useTaskStore = defineStore('task', () => {
 
   // Load history on init
   loadHistory();
+  refreshProcessingTasks();
 
   return {
     pageState,
@@ -238,6 +273,7 @@ export const useTaskStore = defineStore('task', () => {
     loadFromHistory,
     startPolling,
     stopPolling,
+    refreshProcessingTasks,
     reset,
   };
 });
