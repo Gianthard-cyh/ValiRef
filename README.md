@@ -23,6 +23,14 @@
 
 ---
 
+## 🌐 Try It Online
+
+Visit **[valiref.com](http://valiref.com)** to try ValiRef in your browser!
+
+![ValiRef Web Interface](assets/screenshot.png)
+
+---
+
 ## Overview
 
 ValiRef is an intelligent tool designed to detect **hallucinated citations** in academic papers. With the rise of AI-generated content, Large Language Models (LLMs) sometimes generate plausible-sounding but non-existent references. ValiRef helps researchers, reviewers, and publishers verify the authenticity of citations in PDF documents.
