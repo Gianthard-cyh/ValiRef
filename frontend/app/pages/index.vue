@@ -39,11 +39,11 @@
       <!-- Upload State - with diagonal pattern background -->
       <div v-if="pageState === 'idle' || pageState === 'error'" class="relative">
         <!-- Diagonal pattern background - light mode -->
-        <div class="absolute inset-0 pointer-events-none bg-surface-tertiary dark:hidden"
-             style="background-image: repeating-linear-gradient(135deg, #d4d4d4 0px, #d4d4d4 1px, transparent 1px, transparent 20px);" />
+        <div class="absolute inset-0 pointer-events-none dark:hidden bg-surface-tertiary"
+             style="background-image: repeating-linear-gradient(315deg, var(--pattern-fg, #d4d4d4) 0, var(--pattern-fg, #d4d4d4) 1px, transparent 0, transparent 50%); background-size: 10px 10px;" />
         <!-- Diagonal pattern background - dark mode -->
-        <div class="absolute inset-0 pointer-events-none bg-surface-dark-tertiary hidden dark:block"
-             style="background-image: repeating-linear-gradient(135deg, #404040 0px, #404040 1px, transparent 1px, transparent 20px);" />
+        <div class="absolute inset-0 pointer-events-none hidden dark:block bg-surface-dark-tertiary"
+             style="background-image: repeating-linear-gradient(315deg, var(--pattern-fg-dark, #404040) 0, var(--pattern-fg-dark, #404040) 1px, transparent 0, transparent 50%); background-size: 10px 10px;" />
 
         <UploadView />
       </div>
