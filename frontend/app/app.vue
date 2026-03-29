@@ -4,6 +4,7 @@
 
 <script setup lang="ts">
 useHead({
+  title: 'ValiRef',
   script: [
     {
       defer: true,
