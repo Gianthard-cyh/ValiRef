@@ -84,10 +84,28 @@ services:
       - valiref-network
     restart: unless-stopped
 
+  # 数据库管理工具
+  pgadmin:
+    image: dpage/pgadmin4:8.4
+    container_name: valiref-pgadmin
+    ports:
+      - "${PGADMIN_PORT:-8084}:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=${PGADMIN_EMAIL:-admin@valiref.local}
+      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_PASSWORD:-admin}
+      - PGADMIN_CONFIG_SERVER_MODE=False
+      - PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED=False
+    networks:
+      - valiref-network
+    restart: unless-stopped
+
 volumes:
   loki_data:
   prometheus_data:
   grafana_data:
+  pgadmin_data:
 
 networks:
   valiref-network:

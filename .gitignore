@@ -17,3 +17,8 @@ config/grafana/dashboards/custom/
 loki_data/
 prometheus_data/
 grafana_data/
+# Claude skills
+.agents/
+.claude/skills/
+.impeccable.md
+skills-lock.json

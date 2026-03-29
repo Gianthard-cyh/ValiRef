@@ -82,7 +82,14 @@ export const useTaskStore = defineStore('task', () => {
       currentPDFFile.value = pdfFile;
     }
 
-    // If has result, show completed page
+    // If task failed in history, show error
+    if (['failed', 'failed_permanently'].includes(item.status)) {
+      pageState.value = 'error';
+      errorMessage.value = '任务处理失败';
+      return 'failed';
+    }
+
+    // If has result and not failed, show completed page
     if (item.result) {
       currentTaskId.value = taskId;
       currentResult.value = item.result;
@@ -128,6 +135,7 @@ export const useTaskStore = defineStore('task', () => {
 
       // Task failed
       if (['failed', 'failed_permanently'].includes(status.status)) {
+        addToHistory(taskId, item.filename, status.status);
         pageState.value = 'error';
         errorMessage.value = '任务处理失败';
         return 'failed';
@@ -175,6 +183,7 @@ export const useTaskStore = defineStore('task', () => {
         if (['failed', 'failed_permanently'].includes(status.status)) {
           pageState.value = 'error';
           errorMessage.value = '任务处理失败';
+          addToHistory(taskId, filename, status.status);
           stopPolling();
         }
       } catch (e) {

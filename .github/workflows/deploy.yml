@@ -192,7 +192,7 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: 22
-          source: "docker-compose.prod.yml,Caddyfile,.env.example"
+          source: "docker-compose.prod.yml,docker-compose.monitoring.yml,Caddyfile,.env.example"
           target: "/var/www/ValiRef/"
           overwrite: true
 
@@ -235,21 +235,25 @@ jobs:
 
             echo "重启服务"
             cd /var/www/ValiRef
-            # 同时启动业务服务、监控和数据库管理工具
-            sudo docker compose \
+            # 同时启动业务服务和监控（包含pgAdmin）
+            sudo docker compose -p valiref \
               -f docker-compose.prod.yml \
               -f docker-compose.monitoring.yml \
-              -f docker-compose.db-admin.yml \
               --env-file .env up -d --no-deps api worker
+
+            echo "更新监控服务（如果有变更）"
+            sudo docker compose -p valiref \
+              -f docker-compose.prod.yml \
+              -f docker-compose.monitoring.yml \
+              --env-file .env up -d grafana loki promtail pgadmin
 
             echo "等待服务启动..."
             sleep 10
 
             echo "检查服务状态"
-            sudo docker compose \
+            sudo docker compose -p valiref \
               -f docker-compose.prod.yml \
               -f docker-compose.monitoring.yml \
-              -f docker-compose.db-admin.yml \
               ps
 
             echo "清理旧镜像"
