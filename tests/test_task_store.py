@@ -4,6 +4,8 @@ import logging
 import sys
 from pathlib import Path
 
+import pytest
+
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -18,6 +20,7 @@ logger = logging.getLogger(__name__)
 asyncpg_logger = logging.getLogger('asyncpg')
 asyncpg_logger.setLevel(logging.DEBUG)
 
+@pytest.mark.asyncio
 async def test_update_status():
     """测试 update_status 方法"""
     try:

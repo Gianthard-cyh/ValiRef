@@ -437,7 +437,7 @@ class TestRetrievalEvaluator:
         """Test RetrievalEvaluator initializes correctly."""
         evaluator = RetrievalEvaluator()
 
-        assert evaluator._records == []
+        assert evaluator._all_records == []
 
     def test_load_samples(self):
         """Test _load_samples loads from CSV correctly."""
