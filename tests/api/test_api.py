@@ -515,7 +515,9 @@ class TestPDFValidationWorker:
         mock_process_cm.__aexit__ = AsyncMock(return_value=None)
         mock_message.process.return_value = mock_process_cm
 
-        await mock_worker.process_message(mock_message)
+        # process_message raises after handling failure
+        with pytest.raises(Exception, match="Processing error"):
+            await mock_worker.process_message(mock_message)
 
         # Should update to retrying and publish retry
         mock_worker.task_store.update_status.assert_called()
@@ -547,7 +549,9 @@ class TestPDFValidationWorker:
         mock_process_cm.__aexit__ = AsyncMock(return_value=None)
         mock_message.process.return_value = mock_process_cm
 
-        await mock_worker.process_message(mock_message)
+        # process_message raises after handling failure
+        with pytest.raises(Exception, match="Processing error"):
+            await mock_worker.process_message(mock_message)
 
         # Should mark as failed_permanently
         calls = mock_worker.task_store.update_status.call_args_list
