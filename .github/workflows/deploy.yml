@@ -234,14 +234,23 @@ jobs:
             sudo docker pull ${{ env.REGISTRY }}/${{ env.TCR_NAMESPACE }}/${{ env.IMAGE_NAME }}:${IMAGE_TAG}
 
             echo "重启服务"
-            sudo docker compose -f docker-compose.prod.yml down
-            sudo docker compose -f docker-compose.prod.yml --env-file .env up -d --remove-orphans
+            cd /var/www/ValiRef
+            # 同时启动业务服务、监控和数据库管理工具
+            sudo docker compose \
+              -f docker-compose.prod.yml \
+              -f docker-compose.monitoring.yml \
+              -f docker-compose.db-admin.yml \
+              --env-file .env up -d --no-deps api worker
 
             echo "等待服务启动..."
             sleep 10
 
             echo "检查服务状态"
-            sudo docker compose -f docker-compose.prod.yml ps
+            sudo docker compose \
+              -f docker-compose.prod.yml \
+              -f docker-compose.monitoring.yml \
+              -f docker-compose.db-admin.yml \
+              ps
 
             echo "清理旧镜像"
             sudo docker image prune -af --filter "until=24h" || true

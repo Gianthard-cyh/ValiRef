@@ -32,39 +32,39 @@ services:
       - valiref-network
     restart: unless-stopped
 
-  # 指标收集
-  prometheus:
-    image: prom/prometheus:v2.47.0
-    container_name: valiref-prometheus
-    ports:
-      - "${PROMETHEUS_PORT:-9090}:9090"
-    volumes:
-      - ./config/prometheus:/etc/prometheus:ro
-      - prometheus_data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.retention.time=15d'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
-      - '--web.console.templates=/usr/share/prometheus/consoles'
-    networks:
-      - valiref-network
-    restart: unless-stopped
+  # # 指标收集（暂时禁用，网络问题）
+  # prometheus:
+  #   image: prom/prometheus:v2.47.0
+  #   container_name: valiref-prometheus
+  #   ports:
+  #     - "${PROMETHEUS_PORT:-9090}:9090"
+  #   volumes:
+  #     - ./config/prometheus:/etc/prometheus:ro
+  #     - prometheus_data:/prometheus
+  #   command:
+  #     - '--config.file=/etc/prometheus/prometheus.yml'
+  #     - '--storage.tsdb.retention.time=15d'
+  #     - '--storage.tsdb.path=/prometheus'
+  #     - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+  #     - '--web.console.templates=/usr/share/prometheus/consoles'
+  #   networks:
+  #     - valiref-network
+  #   restart: unless-stopped
 
-  # 容器资源监控
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.47.2
-    container_name: valiref-cadvisor
-    privileged: true
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker:/var/lib/docker:ro
-      - /dev/disk:/dev/disk:ro
-    networks:
-      - valiref-network
-    restart: unless-stopped
+  # # 容器资源监控（暂时禁用）
+  # cadvisor:
+  #   image: zcube/cadvisor:v0.47.2
+  #   container_name: valiref-cadvisor
+  #   privileged: true
+  #   volumes:
+  #     - /:/rootfs:ro
+  #     - /var/run:/var/run:ro
+  #     - /sys:/sys:ro
+  #     - /var/lib/docker:/var/lib/docker:ro
+  #     - /dev/disk:/dev/disk:ro
+  #   networks:
+  #     - valiref-network
+  #   restart: unless-stopped
 
   # 可视化面板
   grafana:
@@ -91,4 +91,4 @@ volumes:
 
 networks:
   valiref-network:
-    external: true
+    driver: bridge
