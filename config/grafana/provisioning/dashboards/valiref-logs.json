@@ -41,11 +41,11 @@
       },
       "targets": [
         {
-          "expr": "{container_name=~\"valiref-.*\"}",
+          "expr": "{container_name=\"$container\"}",
           "refId": "A"
         }
       ],
-      "title": "所有服务日志",
+      "title": "容器日志: $container",
       "type": "logs"
     },
     {
@@ -162,12 +162,19 @@
   "templating": {
     "list": [
       {
-        "name": "service",
+        "current": {
+          "selected": true,
+          "text": "valiref-api",
+          "value": "valiref-api"
+        },
+        "name": "container",
         "type": "query",
         "query": "label_values(container_name)",
         "regex": "valiref-.*",
-        "multi": true,
-        "includeAll": true
+        "multi": false,
+        "includeAll": false,
+        "refresh": 1,
+        "label": "容器"
       }
     ]
   },
@@ -179,5 +186,5 @@
   "timezone": "",
   "title": "ValiRef 日志监控",
   "uid": "valiref-logs",
-  "version": 2
+  "version": 3
 }
