@@ -1,13 +1,13 @@
-"""RabbitMQ Consumer - 保留MessageQueue封装 + 官网阻塞模式"""
+"""RabbitMQ Consumer with structured logging."""
 import asyncio
 import json
-import logging
 import signal
 import traceback
 from pathlib import Path
 
 import aio_pika
 
+from src.core.logger import set_logger_mode
 from ...core.config import (
     RABBITMQ_URL,
     RABBITMQ_QUEUE_NAME,
@@ -17,15 +17,14 @@ from ...core.config import (
 )
 from ...core.extract import PDFExtractor, TextExtractor
 from ...core.pipeline import ValidationPipeline
+from ...core.logger import get_logger
 from ..schemas.api import TaskStatus
 from ..services.queue import MessageQueue
 from ..services.task_store import TaskStore
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
-logger = logging.getLogger(__name__)
+# Configure logging for backend (JSON format)
+set_logger_mode("json")
+logger = get_logger(__name__)
 
 
 class PDFValidationWorker:

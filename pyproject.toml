@@ -44,6 +44,7 @@ dependencies = [
     "semanticscholar>=0.11.0",
     "sentence-transformers>=2.2.0",
     "socksio>=1.0.0",
+    "structlog>=25.0.0",
     "tqdm>=4.66.0",
     "typer>=0.9.0",
     "uvicorn[standard]>=0.27.0",

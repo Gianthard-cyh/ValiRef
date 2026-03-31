@@ -22,6 +22,7 @@ from src.core.config import (
     LLM_MAX_RETRIES,
 )
 from src.core.search_cache import get_cache, clear_cache
+from src.core.logger import set_logger_mode, get_logger
 from src.bench import BenchmarkRunner, print_results
 from src.cli_callbacks import CliCallback
 import logging
@@ -34,6 +35,21 @@ app = typer.Typer(
     add_completion=False,
 )
 console = Console()
+
+
+@app.callback()
+def main_callback(
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Enable verbose logging output"
+    ),
+):
+    """Configure logging before any command runs."""
+    set_logger_mode("rich")
+
+    if not verbose:
+        import logging
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+        logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
 def create_llm(temperature: Optional[float] = None) -> ChatDeepSeek:
@@ -105,18 +121,6 @@ def validate(
     """
     Validate references in a PDF file.
     """
-    # Adjust logging level based on verbose flag
-    if not verbose:
-        # Suppress all logs in non-verbose mode to keep the progress bar clean
-        # We rely on RichConsoleCallback to show progress and errors
-        logging.getLogger("valiref").setLevel(logging.CRITICAL)
-        logging.getLogger("httpx").setLevel(logging.CRITICAL)
-        logging.getLogger("httpcore").setLevel(logging.CRITICAL)
-        logging.getLogger().setLevel(logging.CRITICAL)
-    else:
-        logging.getLogger("valiref").setLevel(logging.INFO)
-        logging.getLogger().setLevel(logging.INFO)
-
     path = Path(pdf_path)
     if not path.exists():
         console.print(f"[bold red]Error:[/bold red] File not found: {pdf_path}")
@@ -290,17 +294,6 @@ def benchmark(
             f"[bold red]Error:[/bold red] Dataset file not found: {dataset_path}"
         )
         raise typer.Exit(code=1)
-
-    # Adjust logging level based on verbose flag
-    if not verbose:
-        # Suppress all logs in non-verbose mode to keep the progress bar clean
-        logging.getLogger("valiref").setLevel(logging.CRITICAL)
-        logging.getLogger("httpx").setLevel(logging.CRITICAL)
-        logging.getLogger("httpcore").setLevel(logging.CRITICAL)
-        logging.getLogger().setLevel(logging.CRITICAL)
-    else:
-        logging.getLogger("valiref").setLevel(logging.INFO)
-        logging.getLogger().setLevel(logging.INFO)
 
     async def run_benchmark():
         detector = create_detector(search_mode=search_mode)
