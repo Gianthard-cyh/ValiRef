@@ -1,45 +1,96 @@
+"""Structured logging with structlog.
+
+Supports two modes:
+- 'rich': Colorful terminal output for CLI
+- 'json': Structured JSON for backend services
+
+Integrates structlog with Python's standard logging for consistent
+JSON output across application and third-party libraries.
+"""
 import logging
-from rich.logging import RichHandler
+import sys
+from typing import Literal
+
+import structlog
 from rich.console import Console
 
-# 全局 Console 实例，可用于直接打印富文本
 console = Console()
 
 
-def setup_logger(name: str = "valiref", level: int = logging.INFO) -> logging.Logger:
+def set_logger_mode(mode: Literal["rich", "json"]) -> None:
     """
-    Configures the root logger using basicConfig and returns a specific logger instance.
-    This ensures a single handler at the root level, preventing double logging
-    and providing consistent formatting across the application.
+    Set the logger mode to 'rich' or 'json'.
+
+    Integrates structlog with Python's standard logging so that
+    third-party libraries also output consistent JSON logs.
 
     Args:
-        name: The name of the logger.
-        level: The logging level.
-
-    Returns:
-        A configured logging.Logger instance.
+        mode: 'rich' for terminal output, 'json' for structured logging
     """
-    logging.basicConfig(
-        level=level,
-        format="%(message)s",
-        datefmt="[%X]",
-        handlers=[
-            RichHandler(
-                console=console,
-                rich_tracebacks=True,
-                markup=True,
-                show_time=True,
-                show_path=True,
+    shared_processors = [
+        structlog.contextvars.merge_contextvars,
+        structlog.processors.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+    ]
+
+    if mode == "rich":
+        # Configure structlog for rich console output
+        structlog.configure(
+            processors=shared_processors + [
+                structlog.dev.ConsoleRenderer(colors=True),
+            ],
+            wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
+            context_class=dict,
+            logger_factory=structlog.PrintLoggerFactory(),
+            cache_logger_on_first_use=True,
+        )
+        # Standard logging uses console output
+        logging.basicConfig(
+            format="%(message)s",
+            stream=sys.stdout,
+            level=logging.INFO,
+        )
+    else:  # json
+        # Configure structlog for JSON output
+        structlog.configure(
+            processors=shared_processors + [
+                structlog.stdlib.ExtraAdder(),
+                structlog.processors.dict_tracebacks,
+                structlog.processors.JSONRenderer(),
+            ],
+            wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
+            context_class=dict,
+            logger_factory=structlog.stdlib.LoggerFactory(),
+            cache_logger_on_first_use=True,
+        )
+
+        # Configure standard library logging to use structlog's JSON formatter
+        # This ensures third-party libraries (httpx, asyncpg, etc.) output JSON
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(
+            structlog.stdlib.ProcessorFormatter(
+                foreign_pre_chain=shared_processors,
+                processor=structlog.processors.JSONRenderer(),
             )
-        ],
-        force=True,
-    )
+        )
 
-    # Get the specific logger
-    logger = logging.getLogger(name)
-    logger.setLevel(level)
-    return logger
+        root_logger = logging.getLogger()
+        root_logger.handlers.clear()
+        root_logger.addHandler(handler)
+        root_logger.setLevel(logging.INFO)
+
+        # Reduce noise from third-party libraries
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+        logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
-# Create a default logger instance
-logger = setup_logger()
+def get_logger(name: str = "valiref"):
+    """Get a structlog logger instance."""
+    return structlog.get_logger(name)
+
+
+# Default: setup rich mode
+set_logger_mode("rich")
+
+# Backwards compatibility
+logger = get_logger()
