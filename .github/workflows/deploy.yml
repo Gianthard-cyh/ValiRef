@@ -256,7 +256,7 @@ jobs:
             sudo docker compose -p valiref \
               -f docker-compose.prod.yml \
               -f docker-compose.monitoring.yml \
-              --env-file .env up -d grafana loki promtail pgadmin
+              --env-file .env up -d grafana loki promtail pgadmin prometheus
 
             echo "等待服务启动..."
             sleep 10
