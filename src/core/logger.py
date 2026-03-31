@@ -51,7 +51,7 @@ def set_logger_mode(mode: Literal["rich", "json"]) -> None:
             level=logging.INFO,
         )
     else:  # json
-        # Configure structlog for JSON output
+        # Configure structlog for JSON output (direct to stdout)
         structlog.configure(
             processors=shared_processors + [
                 structlog.stdlib.ExtraAdder(),
@@ -60,11 +60,11 @@ def set_logger_mode(mode: Literal["rich", "json"]) -> None:
             ],
             wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
             context_class=dict,
-            logger_factory=structlog.stdlib.LoggerFactory(),
+            logger_factory=structlog.PrintLoggerFactory(),  # Direct output, not via stdlib
             cache_logger_on_first_use=True,
         )
 
-        # Configure standard library logging to use structlog's JSON formatter
+        # Configure standard library logging to also output JSON
         # This ensures third-party libraries (httpx, asyncpg, etc.) output JSON
         handler = logging.StreamHandler(sys.stdout)
         handler.setFormatter(
