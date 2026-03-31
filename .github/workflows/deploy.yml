@@ -215,8 +215,8 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: 22
-          source: "config/*"
-          target: "/var/www/ValiRef/config/"
+          source: "config/"
+          target: "/var/www/ValiRef/"
           overwrite: true
 
       - name: Deploy on server
