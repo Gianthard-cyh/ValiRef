@@ -49,6 +49,11 @@ async def submit_pdf(
         request_data={"search_mode": search_mode, "original_filename": file.filename},
     )
 
+    # Update metrics
+    from ..services.metrics import tasks_submitted, tasks_active
+    tasks_submitted.inc()
+    tasks_active.labels(status="pending").inc()
+
     queue = request.app.state.queue
     await queue.publish_pdf_task(task_id, file.filename, pdf_path, search_mode)
 

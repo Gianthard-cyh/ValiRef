@@ -2,10 +2,12 @@
 import asyncio
 import json
 import signal
+import time
 import traceback
 from pathlib import Path
 
 import aio_pika
+import structlog
 
 from src.core.logger import set_logger_mode
 from ...core.config import (
@@ -21,6 +23,13 @@ from ...core.logger import get_logger
 from ..schemas.api import TaskStatus
 from ..services.queue import MessageQueue
 from ..services.task_store import TaskStore
+from ..services.metrics import (
+    tasks_completed,
+    tasks_failed,
+    tasks_active,
+    task_duration_seconds,
+)
+from prometheus_client import start_http_server
 
 # Configure logging for backend (JSON format)
 set_logger_mode("json")
@@ -52,6 +61,10 @@ class PDFValidationWorker:
         await self.task_store.initialize()
         await self.queue.connect()
 
+        # Start metrics server in a separate thread
+        start_http_server(8000)
+        logger.info("Metrics server started", port=8000)
+
         logger.info("Worker initialized")
 
     def _setup_signal_handlers(self):
@@ -72,58 +85,83 @@ class PDFValidationWorker:
             search_mode = data.get("search_mode", "local")
             retry_count = data.get("retry_count", 0)
 
-            logger.info("Processing task", task_id=task_id, filename=filename)
+            # Bind task_id to context so all subsequent logs include it
+            structlog.contextvars.bind_contextvars(task_id=task_id)
 
-            await self.task_store.update_status(task_id, TaskStatus.PROCESSING)
+            try:
+                logger.info("Processing task", filename=filename, retry_count=retry_count)
 
-            async with self.semaphore:
-                try:
-                    result = await self.pipeline.process_pdf(pdf_path, max_workers=5)
+                # Update metrics: pending -> processing
+                tasks_active.labels(status="pending").dec()
+                tasks_active.labels(status="processing").inc()
 
-                    references = [
-                        {
-                            "title": item.get("paper", {}).get("title", "Unknown"),
-                            "authors": item.get("paper", {}).get("authors", []),
-                            "status": "real"
-                            if item.get("validation", {}).get("hallucination_type") == "Real"
-                            else "hallucination",
-                            "hallucination_type": item.get("validation", {}).get(
-                                "hallucination_type"
-                            ),
-                            "confidence": item.get("validation", {}).get(
-                                "confidence", 0
-                            ),
-                            "reasoning": item.get("validation", {}).get(
-                                "reasoning", ""
-                            ),
-                            "evidence": item.get("validation", {}).get("evidence", []),
+                await self.task_store.update_status(task_id, TaskStatus.PROCESSING)
+
+                start_time = time.time()
+
+                async with self.semaphore:
+                    try:
+                        result = await self.pipeline.process_pdf(pdf_path, max_workers=5)
+
+                        references = [
+                            {
+                                "title": item.get("paper", {}).get("title", "Unknown"),
+                                "authors": item.get("paper", {}).get("authors", []),
+                                "status": "real"
+                                if item.get("validation", {}).get("hallucination_type") == "Real"
+                                else "hallucination",
+                                "hallucination_type": item.get("validation", {}).get(
+                                    "hallucination_type"
+                                ),
+                                "confidence": item.get("validation", {}).get(
+                                    "confidence", 0
+                                ),
+                                "reasoning": item.get("validation", {}).get(
+                                    "reasoning", ""
+                                ),
+                                "evidence": item.get("validation", {}).get("evidence", []),
+                            }
+                            for item in result.get("results", [])
+                        ]
+
+                        hallucination_count = sum(
+                            1 for r in references if r["status"] == "hallucination"
+                        )
+
+                        formatted_result = {
+                            "total_references": result.get("references_count", 0),
+                            "validated_count": result.get("validated_count", 0),
+                            "real_count": len(references) - hallucination_count,
+                            "hallucination_count": hallucination_count,
+                            "references": references,
+                            "duration_seconds": result.get("duration_seconds", 0),
                         }
-                        for item in result.get("results", [])
-                    ]
 
-                    hallucination_count = sum(
-                        1 for r in references if r["status"] == "hallucination"
-                    )
+                        await self.task_store.update_status(
+                            task_id, TaskStatus.COMPLETED, result=formatted_result
+                        )
 
-                    formatted_result = {
-                        "total_references": result.get("references_count", 0),
-                        "validated_count": result.get("validated_count", 0),
-                        "real_count": len(references) - hallucination_count,
-                        "hallucination_count": hallucination_count,
-                        "references": references,
-                        "duration_seconds": result.get("duration_seconds", 0),
-                    }
+                        # Update metrics: completed
+                        duration = time.time() - start_time
+                        tasks_completed.inc()
+                        task_duration_seconds.observe(duration)
+                        tasks_active.labels(status="processing").dec()
 
-                    await self.task_store.update_status(
-                        task_id, TaskStatus.COMPLETED, result=formatted_result
-                    )
-                    logger.info("Task completed", task_id=task_id)
+                        logger.info("Task completed", references_count=len(references), duration_seconds=duration)
 
-                except Exception as e:
-                    logger.error("Task processing error", task_id=task_id, error=str(e))
-                    error_msg = f"{str(e)}\n{traceback.format_exc()}"
-                    await self._handle_failure(data, task_id, error_msg)
-                    raise
+                    except Exception as e:
+                        logger.error("Task processing error", error=str(e))
+
+                        # Update metrics: failed
+                        tasks_failed.labels(permanent="false").inc()
+                        tasks_active.labels(status="processing").dec()
+
+                        error_msg = f"{str(e)}\n{traceback.format_exc()}"
+                        await self._handle_failure(data, task_id, error_msg)
+                        raise
+            finally:
+                # Clear contextvars after task processing
+                structlog.contextvars.clear_contextvars()
 
     async def _handle_failure(self, data: dict, task_id: str, error_msg: str):
         retry_count = data.get("retry_count", 0) + 1
@@ -147,6 +185,8 @@ class PDFValidationWorker:
                 TaskStatus.FAILED_PERMANENTLY,
                 error_message=f"Max retries exceeded: {error_msg[:1000]}",
             )
+            # Update metrics: permanently failed
+            tasks_failed.labels(permanent="true").inc()
 
     async def run(self):
         await self.initialize()

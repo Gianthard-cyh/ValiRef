@@ -1,10 +1,11 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from contextlib import asynccontextmanager
 
 from src.core.logger import set_logger_mode, get_logger
 from .routers import validation
 from .services.queue import MessageQueue
 from .services.task_store import TaskStore
+from .services.metrics import get_metrics
 
 # Configure logging for backend (JSON format)
 set_logger_mode("json")
@@ -65,3 +66,10 @@ async def health_check():
         return {"status": "healthy", "service": "valiref-api"}
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Service unhealthy: {str(e)}")
+
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint."""
+    data, content_type = get_metrics()
+    return Response(content=data, media_type=content_type)
