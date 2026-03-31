@@ -109,4 +109,4 @@ volumes:
 
 networks:
   valiref-network:
-    driver: bridge
+    external: true
