@@ -109,6 +109,8 @@ services:
       HF_ENDPOINT: https://hf-mirror.com
     volumes:
       - pdf_storage:/tmp/valiref/pdfs
+    ports:
+      - "8001"  # 暴露 metrics 端口，不映射到宿主机
     depends_on:
       postgres:
         condition: service_healthy

@@ -19,3 +19,17 @@ datasources:
     url: http://prometheus:9090
     jsonData:
       timeInterval: "15s"
+
+  - name: PostgreSQL
+    type: postgres
+    access: proxy
+    url: postgres:5432
+    database: arxiv_db
+    user: valiref
+    secureJsonData:
+      password: valiref_secret
+    jsonData:
+      sslmode: disable
+      maxOpenConns: 5
+      maxIdleConns: 2
+      connMaxLifetime: 14400
