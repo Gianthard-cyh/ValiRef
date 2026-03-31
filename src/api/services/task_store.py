@@ -1,12 +1,11 @@
 import asyncpg
 import json
-import logging
 from datetime import datetime
 from typing import Optional, Dict, Any
 from ...core.config import DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME
+from ...core.logger import get_logger
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger = get_logger(__name__)
 
 
 class TaskStore:

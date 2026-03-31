@@ -1,12 +1,14 @@
 from fastapi import FastAPI, HTTPException
 from contextlib import asynccontextmanager
-import logging
 
+from src.core.logger import set_logger_mode, get_logger
 from .routers import validation
 from .services.queue import MessageQueue
 from .services.task_store import TaskStore
 
-logger = logging.getLogger(__name__)
+# Configure logging for backend (JSON format)
+set_logger_mode("json")
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
