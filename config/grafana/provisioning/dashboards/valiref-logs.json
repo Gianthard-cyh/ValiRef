@@ -36,12 +36,13 @@
         "showTime": true,
         "sortOrder": "Descending",
         "wrapLogMessage": true,
-        "prettifyLogMessage": false,
-        "enableLogDetails": true
+        "prettifyLogMessage": true,
+        "enableLogDetails": true,
+        "sortBy": "Time"
       },
       "targets": [
         {
-          "expr": "{container_name=\"$container\"}",
+          "expr": "{container_name=\"$container\"} | json",
           "refId": "A"
         }
       ],
@@ -63,11 +64,13 @@
       "id": 2,
       "options": {
         "showTime": true,
-        "sortOrder": "Descending"
+        "sortOrder": "Descending",
+        "wrapLogMessage": true,
+        "prettifyLogMessage": true
       },
       "targets": [
         {
-          "expr": "{container_name=\"valiref-api\"}",
+          "expr": "{container_name=\"valiref-api\"} | json",
           "refId": "A"
         }
       ],
@@ -89,11 +92,13 @@
       "id": 3,
       "options": {
         "showTime": true,
-        "sortOrder": "Descending"
+        "sortOrder": "Descending",
+        "wrapLogMessage": true,
+        "prettifyLogMessage": true
       },
       "targets": [
         {
-          "expr": "{container_name=\"valiref-worker\"}",
+          "expr": "{container_name=\"valiref-worker\"} | json",
           "refId": "A"
         }
       ],
@@ -116,11 +121,12 @@
       "options": {
         "showTime": true,
         "sortOrder": "Descending",
-        "wrapLogMessage": true
+        "wrapLogMessage": true,
+        "prettifyLogMessage": true
       },
       "targets": [
         {
-          "expr": "{container_name=~\"valiref-.*\", level=\"error\"}",
+          "expr": "{container_name=~\"valiref-.*\", level=\"error\"} | json",
           "refId": "A"
         }
       ],
@@ -143,11 +149,12 @@
       "options": {
         "showTime": true,
         "sortOrder": "Descending",
-        "wrapLogMessage": true
+        "wrapLogMessage": true,
+        "prettifyLogMessage": true
       },
       "targets": [
         {
-          "expr": "{container_name=~\"valiref-.*\", level=\"warning\"}",
+          "expr": "{container_name=~\"valiref-.*\", level=\"warning\"} | json",
           "refId": "A"
         }
       ],
@@ -186,5 +193,5 @@
   "timezone": "",
   "title": "ValiRef 日志监控",
   "uid": "valiref-logs",
-  "version": 3
+  "version": 4
 }
