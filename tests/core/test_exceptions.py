@@ -172,6 +172,67 @@ class TestPipelineExceptions:
 
         assert "Unexpected error" in str(exc_info.value)
 
+    @pytest.mark.asyncio
+    async def test_agent_timeout_returns_completed(self, tmp_path):
+        """Agent timeout should return error result, not fail the entire pipeline."""
+        pdf_file = tmp_path / "test.pdf"
+        pdf_file.write_bytes(b"fake pdf content")
+
+        papers = [
+            Paper(
+                source="reference",
+                id="1",
+                title="Paper 1",
+                abstract="Abstract",
+                authors=["Author"],
+                published_date="2023",
+                url="http://example.com/1",
+            ),
+            Paper(
+                source="reference",
+                id="2",
+                title="Paper 2",
+                abstract="Abstract",
+                authors=["Author"],
+                published_date="2023",
+                url="http://example.com/2",
+            ),
+        ]
+
+        mock_extractor = MagicMock()
+        mock_extractor.extract = AsyncMock(return_value=papers)
+
+        # First succeeds, second times out
+        mock_validation_result = MagicMock()
+        mock_validation_result.model_dump.return_value = {
+            "hallucination_type": "Real",
+            "confidence": 0.9,
+            "reasoning": "Found",
+            "evidence": [],
+        }
+
+        mock_detector = MagicMock()
+        mock_detector.check_reference = AsyncMock(side_effect=[
+            mock_validation_result,
+            ValidationTimeoutError("Agent timeout after 120s"),
+        ])
+
+        pipeline = ValidationPipeline(
+            extractor=mock_extractor,
+            detector=mock_detector,
+        )
+
+        result = await pipeline.process_pdf(str(pdf_file), max_workers=1)
+
+        # Pipeline should complete successfully despite timeout
+        assert result["status"] == "completed"
+        assert result["references_count"] == 2
+        assert result["validated_count"] == 2
+        # First success, second timeout
+        assert result["results"][0]["status"] == "success"
+        assert result["results"][1]["status"] == "error"
+        assert "timeout" in result["results"][1]["validation"]["reasoning"].lower()
+
 
 class TestDetectorExceptions:
     """Tests for Detector exception handling."""

@@ -50,10 +50,10 @@ class OnlineAggregateSearch:
 
         valid_sources = [s for s in sources if s in self.tools]
         if not valid_sources:
-            logger.warning(f"No valid sources provided in {sources}. Using default.")
+            logger.warning("No valid sources provided, using default", sources=sources)
             valid_sources = ["arxiv", "openalex"]
 
-        logger.info(f"Online aggregate search for '{query}' on {valid_sources}")
+        logger.info("Online aggregate search", query=query, sources=valid_sources)
 
         tasks: list[asyncio.Task[list[SearchResult]]] = []
         for source in valid_sources:
@@ -76,10 +76,10 @@ class OnlineAggregateSearch:
         for i, result in enumerate(results_list):
             source_name = valid_sources[i]
             if isinstance(result, asyncio.TimeoutError):
-                logger.warning(f"Timeout searching {source_name}")
+                logger.warning("Timeout searching source", source=source_name)
                 failed_sources.append(source_name)
             elif isinstance(result, Exception):
-                logger.error(f"Error searching {source_name}: {result}")
+                logger.error("Error searching source", source=source_name, error=str(result))
                 failed_sources.append(source_name)
             elif result:
                 final_results.extend(result)

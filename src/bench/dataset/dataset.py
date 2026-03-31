@@ -36,6 +36,6 @@ class BenchmarkDataset:
                         if isinstance(value, list):
                             row[key] = "; ".join(map(str, value))
                     writer.writerow(row)
-            logger.info(f"Dataset exported to {file_path}")
+            logger.info("Dataset exported", file_path=file_path)
         except Exception as e:
-            logger.error(f"Failed to export dataset to CSV: {e}")
+            logger.error("Failed to export dataset", error=str(e))

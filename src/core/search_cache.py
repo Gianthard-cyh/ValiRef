@@ -42,9 +42,9 @@ class SearchCache:
             try:
                 with open(self.cache_file, "r", encoding="utf-8") as f:
                     self._cache = json.load(f)
-                logger.debug(f"Loaded {len(self._cache)} cached entries")
+                logger.debug("Loaded cached entries", entry_count=len(self._cache))
             except (json.JSONDecodeError, IOError) as e:
-                logger.warning(f"Failed to load cache: {e}")
+                logger.warning("Failed to load cache", error=str(e))
                 self._cache = {}
 
     def _save_cache(self):
@@ -53,7 +53,7 @@ class SearchCache:
             with open(self.cache_file, "w", encoding="utf-8") as f:
                 json.dump(self._cache, f, ensure_ascii=False, indent=2)
         except IOError as e:
-            logger.warning(f"Failed to save cache: {e}")
+            logger.warning("Failed to save cache", error=str(e))
 
     def _make_key(self, tool_name: str, query: str, limit: int) -> str:
         """Generate cache key from search parameters."""
@@ -76,11 +76,11 @@ class SearchCache:
         # Check TTL
         age = time.time() - entry.get("timestamp", 0)
         if age > self.ttl_seconds:
-            logger.debug(f"Cache entry expired for {tool_name}: {query[:50]}...")
+            logger.debug("Cache entry expired", tool_name=tool_name, query=query[:50])
             del self._cache[key]
             return None
 
-        logger.debug(f"Cache hit for {tool_name}: {query[:50]}...")
+        logger.debug("Cache hit", tool_name=tool_name, query=query[:50])
         return entry.get("data")
 
     def set(self, tool_name: str, query: str, limit: int, data: List[Dict]):
@@ -95,7 +95,7 @@ class SearchCache:
             "data": data,
         }
         self._save_cache()
-        logger.debug(f"Cached result for {tool_name}: {query[:50]}...")
+        logger.debug("Cached result", tool_name=tool_name, query=query[:50])
 
     def clear(self):
         """Clear all cached entries."""

@@ -68,7 +68,7 @@ class BenchmarkRunner:
                 )
                 papers.append(paper)
 
-        logger.info(f"Loaded {len(papers)} papers from {path}")
+        logger.info("Loaded papers", count=len(papers), path=path)
         return papers
 
     def _get_ground_truth_type(self, paper: Paper) -> str:
@@ -116,7 +116,9 @@ class BenchmarkRunner:
             papers = papers[:limit]
 
         logger.info(
-            f"Running benchmark on {len(papers)} samples with {max_workers} workers"
+            "Running benchmark",
+            samples=len(papers),
+            workers=max_workers,
         )
 
         # Create tool metrics collector (only if show_metrics is True)
@@ -169,7 +171,7 @@ class BenchmarkRunner:
                 ground_truth_type = self._get_ground_truth_type(paper)
                 sample_start = time.time()
 
-                logger.info(f"[Benchmark] Starting validation: {paper.title[:50]}...")
+                logger.info("Starting validation", paper_title=paper.title[:50])
 
                 try:
                     prediction = await self.detector.acheck_reference(paper)
@@ -178,7 +180,7 @@ class BenchmarkRunner:
                         # Derive from is_hallucination if needed
                         prediction.hallucination_type = "Fabrication" if prediction.is_hallucination else "Real"
                 except Exception as e:
-                    logger.error(f"[Benchmark] Error validating {paper.title}: {e}")
+                    logger.error("Error validating", paper_title=paper.title, error=str(e))
                     # Treat errors as hallucination detection failures
                     prediction = ValidationResult(
                         hallucination_type="Fabrication",
@@ -191,8 +193,12 @@ class BenchmarkRunner:
                 correct = prediction.hallucination_type == ground_truth_type
 
                 logger.info(
-                    f"[Benchmark] Completed: {paper.title[:40]}... "
-                    f"({elapsed:.1f}s, correct={correct}, pred={prediction.hallucination_type}, gt={ground_truth_type})"
+                    "Completed validation",
+                    paper_title=paper.title[:40],
+                    elapsed_seconds=round(elapsed, 1),
+                    correct=correct,
+                    prediction=prediction.hallucination_type,
+                    ground_truth=ground_truth_type,
                 )
 
                 progress.update(task, advance=1)
@@ -217,7 +223,7 @@ class BenchmarkRunner:
             valid_samples = []
             for s in results:
                 if isinstance(s, Exception):
-                    logger.error(f"Sample validation failed: {s}")
+                    logger.error("Sample validation failed", error=str(s))
                 else:
                     valid_samples.append(s)
             samples = valid_samples

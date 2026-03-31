@@ -20,7 +20,7 @@ class DuckDuckGoSearch(SearchTool):
     def _perform_search_sync(
         self, query: str, limit: int = DUCKDUCKGO_SEARCH_LIMIT
     ) -> list[SearchResult]:
-        logger.info(f"Searching DuckDuckGo for: {query}")
+        logger.info("Searching DuckDuckGo", query=query)
         results = []
         with DDGS() as ddgs:
             ddgs_gen = ddgs.text(query, max_results=limit)

@@ -124,7 +124,7 @@ class SearchTool:
         cache = get_cache()
         cached_data = cache.get(tool_name, query, limit)
         if cached_data is not None:
-            logger.info(f"[{tool_name}] Cache hit for: {query[:50]}...")
+            logger.info("Cache hit", tool_name=tool_name, query=query[:50])
             return [SearchResult(**item) for item in cached_data]
 
         start_time = datetime.now()
@@ -156,7 +156,7 @@ class SearchTool:
             cached_data = cache.get(tool_name, query, limit)
             if cached_data is not None:
                 logger.info(
-                    f"[{tool_name}] Circuit open, using cached result for: {query[:50]}..."
+                    "Circuit open, using cached result", tool_name=tool_name, query=query[:50]
                 )
                 self._emit_end_signal(
                     tool_name,
@@ -168,19 +168,19 @@ class SearchTool:
                 )
                 return [SearchResult(**item) for item in cached_data]
 
-            logger.warning(f"[{tool_name}] Circuit breaker is OPEN - failing fast")
+            logger.warning("Circuit breaker is OPEN - failing fast", tool_name=tool_name)
             self._emit_end_signal(
                 tool_name, query, start_time, False, 0, "CircuitBreakerOpen"
             )
             return []
 
         except asyncio.CancelledError:
-            logger.info(f"[{tool_name}] Search cancelled: {query}")
+            logger.info("Search cancelled", tool_name=tool_name, query=query)
             self._emit_end_signal(tool_name, query, start_time, False, 0, "Cancelled")
             raise
 
         except Exception as e:
-            logger.error(f"[{tool_name}] Search failed: {e}")
+            logger.error("Search failed", tool_name=tool_name, error=str(e))
             self._emit_end_signal(
                 tool_name, query, start_time, False, 0, e.__class__.__name__
             )
@@ -233,7 +233,7 @@ class SearchTool:
 
             except asyncio.CancelledError:
                 logger.info(
-                    f"[{self.__class__.__name__}] Task cancelled. Exiting retry loop."
+                    "Task cancelled. Exiting retry loop.", tool_name=self.__class__.__name__
                 )
                 raise
 
@@ -254,8 +254,11 @@ class SearchTool:
                         ) + random.uniform(0, 1)
 
                     logger.warning(
-                        f"[{self.__class__.__name__}] 429 Too Many Requests. "
-                        f"Retrying in {backoff_duration:.2f}s... (attempt {attempt + 1}/{max_retries})"
+                        "429 Too Many Requests. Retrying...",
+                        tool_name=self.__class__.__name__,
+                        backoff_duration=round(backoff_duration, 2),
+                        attempt=attempt + 1,
+                        max_retries=max_retries,
                     )
                     # Notify circuit breaker of the failure even though we're retrying
                     # This ensures the circuit opens when service is consistently rate-limiting
@@ -272,8 +275,12 @@ class SearchTool:
                         0, 1
                     )
                     logger.warning(
-                        f"[{self.__class__.__name__}] Error: {str(e)}. "
-                        f"Retrying in {backoff_duration:.2f}s... (attempt {attempt + 1}/{max_retries})"
+                        "Search error. Retrying...",
+                        tool_name=self.__class__.__name__,
+                        error=str(e),
+                        backoff_duration=round(backoff_duration, 2),
+                        attempt=attempt + 1,
+                        max_retries=max_retries,
                     )
                     await asyncio.sleep(backoff_duration)
                     continue

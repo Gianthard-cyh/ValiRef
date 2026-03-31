@@ -21,7 +21,7 @@ async def lifespan(app: FastAPI):
         app.state.queue = queue
         logger.info("Connected to RabbitMQ")
     except Exception as e:
-        logger.error(f"Failed to connect to RabbitMQ: {e}")
+        logger.error("Failed to connect to RabbitMQ", error=str(e))
         raise RuntimeError(f"RabbitMQ connection failed: {e}") from e
 
     try:
@@ -29,7 +29,7 @@ async def lifespan(app: FastAPI):
         app.state.task_store = task_store
         logger.info("Connected to PostgreSQL")
     except Exception as e:
-        logger.error(f"Failed to connect to PostgreSQL: {e}")
+        logger.error("Failed to connect to PostgreSQL", error=str(e))
         await queue.close()
         raise RuntimeError(f"PostgreSQL connection failed: {e}") from e
 

@@ -38,15 +38,14 @@ def _generate_fabrications_batch(
                 inputs, config={"max_concurrency": 5}, return_exceptions=True
             )
         except Exception as e:
-            logger.error(f"Batch execution failed for Fabrication: {e}")
+            logger.error("Batch execution failed", hallucination_type="Fabrication", error=str(e))
             progress.update(task_id, advance=len(batch_papers))
             continue
 
         for paper, result in zip(batch_papers, results):
             if isinstance(result, Exception) or result is None:
                 logger.error(
-                    f"Error generating Fabrication for {paper.id}: {result}"
-                )
+                    "Error generating Fabrication", paper_id=paper.id, result=result)
                 continue
 
             try:
@@ -69,8 +68,7 @@ def _generate_fabrications_batch(
                 generated_papers.append(new_paper)
             except Exception as e:
                 logger.error(
-                    f"Error creating Fabrication object for {paper.id}: {e}"
-                )
+                    "Error creating Fabrication object", paper_id=paper.id, error=str(e))
 
         progress.update(task_id, advance=len(batch_papers))
 

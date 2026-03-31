@@ -44,10 +44,12 @@ class LocalDBSearch(SearchTool):
         """Lazy load the CrossEncoder model."""
         if self._model is None:
             logger.info(
-                f"[LocalDBSearch] Loading CrossEncoder model: {self.MODEL_NAME}"
+                "Loading CrossEncoder model",
+                tool_name="LocalDBSearch",
+                model_name=self.MODEL_NAME,
             )
             self._model = CrossEncoder(self.MODEL_NAME, device="cpu", max_length=512)
-            logger.info(f"[LocalDBSearch] CrossEncoder model loaded successfully")
+            logger.info("CrossEncoder model loaded successfully", tool_name="LocalDBSearch")
         return self._model
 
     async def _get_pool(self) -> asyncpg.Pool:
@@ -131,9 +133,11 @@ class LocalDBSearch(SearchTool):
         # Log reranking info
         if len(scored_results) >= 2:
             logger.info(
-                f"[LocalDBSearch] CrossEncoder reranked {len(results)} results: "
-                f"top_score={scored_results[0][1]:.4f}, "
-                f"min_score={scored_results[-1][1]:.4f}"
+                "CrossEncoder reranked results",
+                tool_name="LocalDBSearch",
+                result_count=len(results),
+                top_score=round(scored_results[0][1], 4),
+                min_score=round(scored_results[-1][1], 4),
             )
 
         # Return top-k results
@@ -210,5 +214,5 @@ class LocalDBSearch(SearchTool):
                 return reranked_results
 
         except Exception as e:
-            logger.error(f"[LocalDBSearch] Database query failed: {e}")
+            logger.error("Database query failed", tool_name="LocalDBSearch", error=str(e))
             raise

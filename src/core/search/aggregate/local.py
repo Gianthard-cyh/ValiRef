@@ -34,7 +34,7 @@ class LocalAggregateSearch:
         Returns:
             List of search result dictionaries.
         """
-        logger.info(f"Local aggregate search for '{query}'")
+        logger.info("Local aggregate search", query=query)
 
         results = await self.tool.asearch(query, limit=limit)
 

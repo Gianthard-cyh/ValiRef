@@ -196,7 +196,7 @@ class HallucinationDetector:
                                 )
                             return ValidationResult(**args)
                         except Exception as e:
-                            logger.error(f"Failed to parse tool args: {e}")
+                            logger.error("Failed to parse tool args", error=str(e))
                             raise AgentParseError(f"Failed to parse agent output: {e}") from e
 
         logger.warning(
@@ -216,7 +216,7 @@ class HallucinationDetector:
         Check if a single reference is valid or hallucinated using a ReAct Agent
         asynchronously.
         """
-        logger.info(f"Checking reference (async): {reference.title}")
+        logger.info("Checking reference", title=reference.title)
 
         claims_text = (
             "\n".join([f"  - {c}" for c in reference.claims])
@@ -251,9 +251,7 @@ class HallucinationDetector:
             return self._parse_agent_response(response)
 
         except asyncio.TimeoutError:
-            logger.error(
-                f"Agent timeout after {AGENT_TIMEOUT}s for: {reference.title[:50]}..."
-            )
+            logger.error("Agent timeout", timeout_seconds=AGENT_TIMEOUT, title=reference.title[:50])
             raise ValidationTimeoutError(
                 f"Validation timeout after {AGENT_TIMEOUT}s - agent took too long to respond"
             )
@@ -264,5 +262,5 @@ class HallucinationDetector:
             # Re-raise AgentParseError as-is
             raise
         except Exception as e:
-            logger.error(f"Agent validation failed: {e}")
+            logger.error("Agent validation failed", error=str(e))
             raise ValidationError(f"Validation failed: {e}") from e

@@ -117,7 +117,7 @@ class RetrievalEvaluator:
         """处理单个样本（带并发控制），返回该样本的所有查询记录"""
         async with semaphore:
             if verbose:
-                logger.info(f"Processing sample {idx + 1}/{total}: {paper.title[:50]}...")
+                logger.info("Processing sample", current=idx + 1, total=total, paper_title=paper.title[:50])
 
             # 每个样本使用独立的 EvalLocalSearch 实例
             eval_search = EvalLocalSearch()
@@ -138,7 +138,7 @@ class RetrievalEvaluator:
             try:
                 await detector.acheck_reference(paper)
             except Exception as e:
-                logger.error(f"Error processing {paper.id}: {e}")
+                logger.error("Error processing paper", paper_id=paper.id, error=str(e))
 
             # 返回该样本的所有查询记录
             return eval_search.get_records()
@@ -165,8 +165,8 @@ class RetrievalEvaluator:
         samples = self._load_samples(dataset_path, sample_size)
 
         if verbose:
-            logger.info(f"Loaded {len(samples)} samples from {dataset_path}")
-            logger.info(f"Processing with {workers} concurrent workers")
+            logger.info("Loaded samples", count=len(samples), path=dataset_path)
+            logger.info("Processing with workers", workers=workers)
 
         # 创建信号量控制并发
         semaphore = asyncio.Semaphore(workers)
@@ -192,7 +192,7 @@ class RetrievalEvaluator:
             all_records.extend(records)
 
         if verbose:
-            logger.info(f"Completed {len(all_records)} queries total from {len(samples)} samples")
+            logger.info("Completed queries", queries=len(all_records), samples=len(samples))
 
         # 计算指标
         return self._aggregate_results(all_records, samples)

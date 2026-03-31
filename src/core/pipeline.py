@@ -36,18 +36,18 @@ class ValidationPipeline:
 
         self._check_file_exists(path)
 
-        logger.info(f"Starting extraction for: {path.name}")
+        logger.info("Starting extraction", filename=path.name)
         self._notify_callbacks("on_pipeline_start", path.name)
         self._notify_callbacks("on_extraction_start", path.name)
 
         try:
             references = await self.extractor.extract(str(path))
 
-            logger.info(f"Extracted {len(references)} references.")
+            logger.info("Extracted references", reference_count=len(references))
             self._notify_callbacks("on_extraction_end", references)
 
         except Exception as e:
-            logger.error(f"Extraction failed: {e}")
+            logger.error("Extraction failed", error=str(e))
             self._notify_callbacks("on_error", e)
             raise ExtractionError(f"Failed to extract references from {path.name}: {e}") from e
 
@@ -56,7 +56,9 @@ class ValidationPipeline:
             return self._create_summary(path.name, start_time)
 
         logger.info(
-            f"Starting validation for {len(references)} references with {max_workers} workers..."
+            "Starting validation",
+            reference_count=len(references),
+            worker_count=max_workers
         )
         self._notify_callbacks("on_validation_start", len(references))
 
@@ -64,7 +66,7 @@ class ValidationPipeline:
         try:
             results = await self._run_validation(references, max_workers)
         except Exception as e:
-            logger.error(f"Pipeline failed: {e}")
+            logger.error("Pipeline failed", error=str(e))
             self._notify_callbacks("on_error", e)
             raise e
 
@@ -73,7 +75,9 @@ class ValidationPipeline:
         )
 
         logger.info(
-            f"Pipeline {summary['status']} in {summary['duration_seconds']:.2f} seconds."
+            "Pipeline completed",
+            status=summary['status'],
+            duration_seconds=summary['duration_seconds']
         )
         self._notify_callbacks("on_pipeline_end", summary)
 
@@ -111,10 +115,10 @@ class ValidationPipeline:
             except (ValidationError, ValidationTimeoutError, AgentParseError, SearchError) as e:
                 # Business exceptions are already handled in _validate_single_reference
                 # This should not happen, but log just in case
-                logger.warning(f"Unexpected business exception in task: {e}")
+                logger.warning("Unexpected business exception in task", error=str(e))
             except Exception as e:
                 # Unexpected exceptions: re-raise to fail the entire task
-                logger.error(f"Unexpected task error: {e}")
+                logger.error("Unexpected task error", error=str(e))
                 raise
 
         return results
@@ -125,7 +129,7 @@ class ValidationPipeline:
         """
         Validate a single reference using the detector asynchronously.
         """
-        logger.info(f"Validating [{index + 1}/{total}]: {paper.title[:50]}...")
+        logger.info("Validating reference", index=index + 1, total=total, title=paper.title[:50])
         self._notify_callbacks("on_reference_validation_start", paper, index, total)
 
         try:
@@ -141,7 +145,7 @@ class ValidationPipeline:
 
         except (ValidationError, ValidationTimeoutError, AgentParseError, SearchError) as e:
             # Business exceptions: convert to error result, task continues
-            logger.error(f"Validation failed for reference '{paper.title}': {e}")
+            logger.error("Validation failed for reference", reference_title=paper.title, error=str(e))
             self._notify_callbacks("on_reference_validation_error", paper, e)
             return {
                 "paper": paper.model_dump(),
@@ -155,7 +159,7 @@ class ValidationPipeline:
             }
         except Exception as e:
             # Unknown exceptions: raise to fail the entire task
-            logger.error(f"Unexpected error checking reference '{paper.title}': {e}")
+            logger.error("Unexpected error checking reference", reference_title=paper.title, error=str(e))
             raise
 
     def _create_summary(

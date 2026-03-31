@@ -41,7 +41,10 @@ class PaperCrawler:
             List of Paper objects
         """
         logger.info(
-            f"Starting seed sourcing from {self.source} for topic '{topic}', count={count}"
+            "Starting seed sourcing",
+            source=self.source,
+            topic=topic,
+            count=count,
         )
 
         if self.source == "arxiv":
@@ -65,7 +68,8 @@ class PaperCrawler:
 
                     if not batch_papers:
                         logger.warning(
-                            f"No more papers found or error occurred at start={start}"
+                            "No more papers found or error occurred",
+                            start=start,
                         )
                         break
 
@@ -87,7 +91,7 @@ class PaperCrawler:
         elapsed = time.time() - self._last_request_time
         if elapsed < self._rate_limit_delay:
             sleep_time = self._rate_limit_delay - elapsed
-            logger.debug(f"Rate limiting: sleeping {sleep_time:.2f}s")
+            logger.debug("Rate limiting", sleep_seconds=round(sleep_time, 2))
             time.sleep(sleep_time)
 
         # 构建查询参数
@@ -105,7 +109,7 @@ class PaperCrawler:
         url_params = urllib.parse.urlencode(params)
         url = f"{self.ARXIV_API_URL}?{url_params}"
 
-        logger.info(f"Querying arXiv API: {url}")
+        logger.info("Querying arXiv API", url=url)
 
         try:
             self._last_request_time = time.time()
@@ -114,7 +118,7 @@ class PaperCrawler:
 
             return self._parse_arxiv_response(xml_data)
         except Exception as e:
-            logger.error(f"Failed to fetch data from arXiv: {e}")
+            logger.error("Failed to fetch data from arXiv", error=str(e))
             return []
 
     def _parse_arxiv_response(self, xml_data: str) -> List[Paper]:
@@ -167,8 +171,8 @@ class PaperCrawler:
                 papers.append(paper)
 
             except Exception as e:
-                logger.warning(f"Error parsing an entry: {e}")
+                logger.warning("Error parsing entry", error=str(e))
                 continue
 
-        logger.info(f"Successfully parsed {len(papers)} papers")
+        logger.info("Successfully parsed papers", count=len(papers))
         return papers

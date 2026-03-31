@@ -69,7 +69,7 @@ def _generate_irrelevances_batch(
                 inputs, config={"max_concurrency": 5}, return_exceptions=True
             )
         except Exception as e:
-            logger.error(f"Batch execution failed for Irrelevance: {e}")
+            logger.error("Batch execution failed", hallucination_type="Irrelevance", error=str(e))
             progress.update(task_id, advance=len(batch_papers))
             continue
 
@@ -79,8 +79,7 @@ def _generate_irrelevances_batch(
 
             if isinstance(result, Exception) or result is None:
                 logger.error(
-                    f"Error generating Irrelevance for {paper.id}: {result}"
-                )
+                    "Error generating Irrelevance", paper_id=paper.id, result=result)
                 # Fallback
                 irrelevant_claim = f"Recent studies have explored various methods. For instance, {citation_marker} proposes a novel approach in this domain."
             else:
@@ -106,8 +105,7 @@ def _generate_irrelevances_batch(
                 generated_papers.append(new_paper)
             except Exception as e:
                 logger.error(
-                    f"Error creating Irrelevance object for {paper.id}: {e}"
-                )
+                    "Error creating Irrelevance object", paper_id=paper.id, error=str(e))
 
         progress.update(task_id, advance=len(batch_papers))
 

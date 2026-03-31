@@ -92,7 +92,7 @@ class CircuitBreaker:
                     self._state = CircuitState.HALF_OPEN
                     self._half_open_calls = 0
                     logger.info(
-                        f"[{self.name}] Circuit breaker entering HALF_OPEN state"
+                        "Circuit breaker entering HALF_OPEN state", tool_name=self.name
                     )
                     return True
                 return False
@@ -116,7 +116,7 @@ class CircuitBreaker:
                     self._failure_count = 0
                     self._success_count = 0
                     self._half_open_calls = 0
-                    logger.info(f"[{self.name}] Circuit breaker CLOSED (recovered)")
+                    logger.info("Circuit breaker CLOSED (recovered)", tool_name=self.name)
             else:
                 self._failure_count = 0
 
@@ -130,13 +130,14 @@ class CircuitBreaker:
                 # Failure in half-open: go back to open
                 self._state = CircuitState.OPEN
                 self._half_open_calls = 0
-                logger.warning(f"[{self.name}] Circuit breaker OPEN (recovery failed)")
+                logger.warning("Circuit breaker OPEN (recovery failed)", tool_name=self.name)
             elif self._failure_count >= self.failure_threshold:
                 if self._state != CircuitState.OPEN:
                     self._state = CircuitState.OPEN
                     logger.warning(
-                        f"[{self.name}] Circuit breaker OPEN after "
-                        f"{self.failure_threshold} failures"
+                        "Circuit breaker OPEN after failures",
+                        tool_name=self.name,
+                        failure_threshold=self.failure_threshold,
                     )
 
     async def call(self, func: Callable, *args, **kwargs) -> Any:
@@ -328,7 +329,7 @@ class ToolRequestQueue:
             return await self.circuit_breaker.call(execute_fn, task)
 
         except asyncio.CancelledError:
-            logger.debug(f"[{self.tool_name}] Task {task.task_id} cancelled")
+            logger.debug("Task cancelled", tool_name=self.tool_name, task_id=task.task_id)
             raise
 
         finally:

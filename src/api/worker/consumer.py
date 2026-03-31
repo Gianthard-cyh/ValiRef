@@ -72,7 +72,7 @@ class PDFValidationWorker:
             search_mode = data.get("search_mode", "local")
             retry_count = data.get("retry_count", 0)
 
-            logger.info(f"[Task {task_id}] Processing: {filename}")
+            logger.info("Processing task", task_id=task_id, filename=filename)
 
             await self.task_store.update_status(task_id, TaskStatus.PROCESSING)
 
@@ -117,10 +117,10 @@ class PDFValidationWorker:
                     await self.task_store.update_status(
                         task_id, TaskStatus.COMPLETED, result=formatted_result
                     )
-                    logger.info(f"[Task {task_id}] Completed")
+                    logger.info("Task completed", task_id=task_id)
 
                 except Exception as e:
-                    logger.error(f"[Task {task_id}] Error: {e}")
+                    logger.error("Task processing error", task_id=task_id, error=str(e))
                     error_msg = f"{str(e)}\n{traceback.format_exc()}"
                     await self._handle_failure(data, task_id, error_msg)
                     raise
@@ -156,7 +156,9 @@ class PDFValidationWorker:
         await channel.set_qos(prefetch_count=WORKER_PREFETCH_COUNT)
 
         logger.info(
-            f"PDF Worker started with concurrency={WORKER_CONCURRENCY}, prefetch={WORKER_PREFETCH_COUNT}"
+            "PDF Worker started",
+            concurrency=WORKER_CONCURRENCY,
+            prefetch=WORKER_PREFETCH_COUNT
         )
         logger.info("Press Ctrl+C to stop gracefully")
 

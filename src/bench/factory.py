@@ -129,12 +129,12 @@ class BenchmarkDatasetFactory:
                         results = future.result()
                         hallucinated_papers.extend(results)
                         logger.info(
-                            f"Completed injection for {h_type}. Generated {len(results)} papers."
-                        )
+                            "Completed injection", hallucination_type=h_type, generated_count=len(results))
                     except Exception as e:
-                        logger.error(f"Error in hallucination batch for {h_type}: {e}")
+                        logger.error("Error in hallucination batch", hallucination_type=h_type, error=str(e))
 
         logger.info(
-            f"Hallucination injection complete. Total papers: {len(hallucinated_papers)}"
+            "Hallucination injection complete",
+            total_papers=len(hallucinated_papers),
         )
         return BenchmarkDataset(hallucinated_papers)

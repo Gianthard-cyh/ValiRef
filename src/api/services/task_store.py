@@ -13,11 +13,12 @@ class TaskStore:
         self.pool = None
 
     async def initialize(self):
-        logger.debug(f"Connecting to PostgreSQL: {DB_HOST}:{DB_PORT}/{DB_NAME}")
+        logger.debug("Connecting to PostgreSQL", host=DB_HOST, port=DB_PORT, database=DB_NAME)
 
         async def init_connection(conn):
             logger.debug(
-                f"[asyncpg] New connection established: {conn.get_server_version()}"
+                "[asyncpg] New connection established",
+                server_version=conn.get_server_version()
             )
             await conn.set_type_codec(
                 "json", encoder=json.dumps, decoder=json.loads, schema="pg_catalog"
@@ -68,7 +69,7 @@ class TaskStore:
     async def create_task(
         self, task_id: str, filename: str, pdf_path: str, request_data: dict
     ) -> dict:
-        logger.debug(f"[SQL] INSERT task {task_id}: {filename}")
+        logger.debug("[SQL] INSERT task", task_id=task_id, filename=filename)
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
                 """INSERT INTO pdf_validation_tasks
@@ -81,17 +82,19 @@ class TaskStore:
                 pdf_path,
                 json.dumps(request_data),
             )
-            logger.debug(f"[SQL] INSERT task {task_id} success")
+            logger.debug("[SQL] INSERT task success", task_id=task_id)
             return dict(row)
 
     async def get_task(self, task_id: str) -> Optional[dict]:
-        logger.debug(f"[SQL] SELECT task {task_id}")
+        logger.debug("[SQL] SELECT task", task_id=task_id)
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
                 "SELECT * FROM pdf_validation_tasks WHERE task_id = $1", task_id
             )
             logger.debug(
-                f"[SQL] SELECT task {task_id}: {'found' if row else 'not found'}"
+                "[SQL] SELECT task result",
+                task_id=task_id,
+                found=bool(row)
             )
             return dict(row) if row else None
 
