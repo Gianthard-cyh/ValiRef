@@ -571,6 +571,136 @@
       ],
       "title": "处理时长分布热力图",
       "type": "heatmap"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 23
+      },
+      "id": 13,
+      "panels": [],
+      "title": "任务列表",
+      "type": "row"
+    },
+    {
+      "datasource": "PostgreSQL",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "completed": {
+                        "color": "green",
+                        "index": 0,
+                        "text": "completed"
+                      },
+                      "failed": {
+                        "color": "red",
+                        "index": 1,
+                        "text": "failed"
+                      },
+                      "failed_permanently": {
+                        "color": "dark-red",
+                        "index": 2,
+                        "text": "failed_permanently"
+                      },
+                      "pending": {
+                        "color": "yellow",
+                        "index": 3,
+                        "text": "pending"
+                      },
+                      "processing": {
+                        "color": "blue",
+                        "index": 4,
+                        "text": "processing"
+                      },
+                      "retrying": {
+                        "color": "orange",
+                        "index": 5,
+                        "text": "retrying"
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 24
+      },
+      "id": 9,
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "created_at"
+          }
+        ]
+      },
+      "pluginVersion": "11.0.0",
+      "targets": [
+        {
+          "format": "table",
+          "group": [],
+          "metricColumn": "none",
+          "rawQuery": true,
+          "rawSql": "SELECT task_id, filename, status, created_at, updated_at,\n       CASE\n         WHEN completed_at IS NOT NULL THEN\n           ROUND(EXTRACT(EPOCH FROM (completed_at - created_at))::numeric, 1)\n         ELSE NULL\n       END as duration_seconds\nFROM pdf_validation_tasks\nORDER BY created_at DESC\nLIMIT 10",
+          "refId": "A",
+          "select": [
+            [
+              {
+                "params": [
+                  "value"
+                ],
+                "type": "column"
+              }
+            ]
+          ],
+          "timeColumn": "time",
+          "where": [
+            {
+              "name": "$__timeFilter",
+              "params": [],
+              "type": "macro"
+            }
+          ]
+        }
+      ],
+      "title": "最近 10 条任务",
+      "type": "table"
     }
   ],
   "refresh": "5s",
