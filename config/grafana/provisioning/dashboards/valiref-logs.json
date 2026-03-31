@@ -120,11 +120,38 @@
       },
       "targets": [
         {
-          "expr": "{service_name=~\"valiref-.*\"} |= \"ERROR\" or \"error\" or \"Error\"",
+          "expr": "{container_name=~\"valiref-.*\", level=\"error\"}",
           "refId": "A"
         }
       ],
-      "title": "错误日志",
+      "title": "错误日志 (level=error)",
+      "type": "logs"
+    },
+    {
+      "datasource": "Loki",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 24
+      },
+      "id": 5,
+      "options": {
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "expr": "{container_name=~\"valiref-.*\", level=\"warning\"}",
+          "refId": "A"
+        }
+      ],
+      "title": "警告日志 (level=warning)",
       "type": "logs"
     }
   ],
@@ -133,7 +160,16 @@
   "style": "dark",
   "tags": ["valiref", "logs"],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "name": "service",
+        "type": "query",
+        "query": "label_values(container_name)",
+        "regex": "valiref-.*",
+        "multi": true,
+        "includeAll": true
+      }
+    ]
   },
   "time": {
     "from": "now-1h",
@@ -143,5 +179,5 @@
   "timezone": "",
   "title": "ValiRef 日志监控",
   "uid": "valiref-logs",
-  "version": 1
+  "version": 2
 }

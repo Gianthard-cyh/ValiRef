@@ -22,11 +22,23 @@ scrape_configs:
       - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
         target_label: 'service_name'
     pipeline_stages:
+      # Docker 日志是 JSON，提取 log 字段
       - json:
           expressions:
             log: log
             stream: stream
-      - labels:
-          stream:
-      - output:
+      # 解析 log 字段中的结构化日志（valiref 服务）
+      - json:
           source: log
+          expressions:
+            event: event
+            level: level
+            timestamp: timestamp
+            logger: logger
+      # 将日志级别作为标签
+      - labels:
+          level:
+          stream:
+      # 输出 event 字段作为日志消息
+      - output:
+          source: event
