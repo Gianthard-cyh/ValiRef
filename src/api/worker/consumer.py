@@ -62,8 +62,8 @@ class PDFValidationWorker:
         await self.queue.connect()
 
         # Start metrics server in a separate thread
-        start_http_server(8000)
-        logger.info("Metrics server started", port=8000)
+        start_http_server(8001)
+        logger.info("Metrics server started", port=8001)
 
         logger.info("Worker initialized")
 

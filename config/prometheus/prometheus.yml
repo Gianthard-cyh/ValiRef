@@ -3,19 +3,13 @@ global:
   evaluation_interval: 15s
 
 scrape_configs:
-  # Prometheus 自身监控
-  - job_name: 'prometheus'
-    static_configs:
-      - targets: ['localhost:9090']
-
-  # 容器资源监控
-  - job_name: 'cadvisor'
-    static_configs:
-      - targets: ['cadvisor:8080']
-
-  # ValiRef API 监控（可选，需要应用暴露 /metrics 端点）
   - job_name: 'valiref-api'
     static_configs:
-      - targets: ['api:8000']
-    metrics_path: /metrics
-    # 如果 API 还没暴露 metrics，可以先注释掉上面这行
+      - targets: ['host.docker.internal:8000']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'valiref-worker'
+    static_configs:
+      - targets: ['host.docker.internal:8001']
+    scrape_interval: 5s
