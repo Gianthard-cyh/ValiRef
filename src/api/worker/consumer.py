@@ -86,7 +86,11 @@ class PDFValidationWorker:
                 filename = data["filename"]
                 pdf_path = data["pdf_path"]
                 search_mode = data.get("search_mode", "local")
-                retry_count = data.get("retry_count", 0)
+
+                # Calculate retry count from message headers (RabbitMQ x-death)
+                # x-death header contains rejection history
+                x_death = message.headers.get("x-death", []) if message.headers else []
+                retry_count = len(x_death)
 
                 # Bind task_id to context so all subsequent logs include it
                 structlog.contextvars.bind_contextvars(task_id=task_id)
