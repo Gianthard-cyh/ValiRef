@@ -255,34 +255,24 @@ class TestMessageQueue:
         assert message.delivery_mode.value == 2  # PERSISTENT
 
     @pytest.mark.asyncio
-    async def test_publish_retry_within_limit(self, message_queue):
-        """测试在重试限制内发布重试消息"""
-        message_queue.retry_exchange = AsyncMock()
+    async def test_publish_to_dlq(self, message_queue):
+        """测试发布消息到DLQ"""
+        message_queue.channel.default_exchange = AsyncMock()
 
-        await message_queue.publish_retry(
-            task_id="task-002",
-            filename="paper.pdf",
-            pdf_path="/tmp/paper.pdf",
-            search_mode="local",
-            retry_count=1  # 第1次重试，小于默认最大值3
-        )
-
-        message_queue.retry_exchange.publish.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_publish_retry_exceeds_limit(self, message_queue):
-        """测试超过重试限制时不发布重试消息"""
-        message_queue.retry_exchange = AsyncMock()
-
-        await message_queue.publish_retry(
+        await message_queue.publish_to_dlq(
             task_id="task-003",
             filename="paper.pdf",
             pdf_path="/tmp/paper.pdf",
             search_mode="local",
-            retry_count=3  # 达到最大值，不应再重试
+            retry_count=3,
+            error_msg="Max retries exceeded"
         )
 
-        message_queue.retry_exchange.publish.assert_not_called()
+        message_queue.channel.default_exchange.publish.assert_called_once()
+        call_args = message_queue.channel.default_exchange.publish.call_args
+        message = call_args[0][0]
+        assert message.content_type == "application/json"
+        assert message.delivery_mode.value == 2  # PERSISTENT
 
 
 class TestAPIRoutes:
@@ -552,15 +542,15 @@ class TestPDFValidationWorker:
         assert args[1] == "completed"
 
     @pytest.mark.asyncio
-    async def test_worker_retry_mechanism(self, mock_worker):
-        """测试Worker重试机制(最多3次)"""
+    async def test_worker_under_max_retries_raises_for_retry(self, mock_worker):
+        """测试Worker在重试次数内抛出异常，让RabbitMQ自动重试"""
         mock_message = MagicMock()
         mock_message.body = json.dumps({
             "task_id": "task-002",
             "filename": "test.pdf",
             "pdf_path": "/tmp/test.pdf",
             "search_mode": "local",
-            "retry_count": 0
+            "retry_count": 0  # 未达到最大重试次数
         }).encode()
 
         # Simulate pipeline failure
@@ -571,24 +561,18 @@ class TestPDFValidationWorker:
         mock_process_cm.__aexit__ = AsyncMock(return_value=None)
         mock_message.process.return_value = mock_process_cm
 
-        # process_message raises after handling failure
+        # process_message raises exception to trigger RabbitMQ retry via DLX
         with pytest.raises(Exception, match="Processing error"):
             await mock_worker.process_message(mock_message)
 
-        # Should update to retrying and publish retry
+        # Should update task status to processing then fail
         mock_worker.task_store.update_status.assert_called()
-        mock_worker.queue.publish_retry.assert_called_once()
-        call_args = mock_worker.queue.publish_retry.call_args
-        # Check retry_count in kwargs or positional args
-        if call_args.kwargs:
-            assert call_args.kwargs.get("retry_count") == 1
-        else:
-            # Positional: (task_id, filename, pdf_path, search_mode, retry_count)
-            assert call_args[0][4] == 1
+        # Should NOT publish to DLQ (will be retried via RabbitMQ DLX)
+        mock_worker.queue.publish_to_dlq.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_worker_max_retries_exceeded(self, mock_worker):
-        """测试超过最大重试次数标记为永久失败"""
+    async def test_worker_max_retries_exceeded_sends_to_dlq(self, mock_worker):
+        """测试超过最大重试次数时发送到DLQ"""
         mock_message = MagicMock()
         mock_message.body = json.dumps({
             "task_id": "task-003",
@@ -605,18 +589,17 @@ class TestPDFValidationWorker:
         mock_process_cm.__aexit__ = AsyncMock(return_value=None)
         mock_message.process.return_value = mock_process_cm
 
-        # process_message raises after handling failure
-        with pytest.raises(Exception, match="Processing error"):
-            await mock_worker.process_message(mock_message)
+        # process_message should NOT raise - it handles the failure by sending to DLQ
+        await mock_worker.process_message(mock_message)
 
         # Should mark as failed_permanently
         calls = mock_worker.task_store.update_status.call_args_list
         last_call = calls[-1]
-        # Access args: (task_id, status, ...)
         args = last_call[0]
         assert args[1] == "failed_permanently"
-        # Should not publish retry
-        mock_worker.queue.publish_retry.assert_not_called()
+
+        # Should publish to DLQ
+        mock_worker.queue.publish_to_dlq.assert_called_once()
 
 
 class TestHealthEndpoint:
