@@ -542,8 +542,8 @@ class TestPDFValidationWorker:
         assert args[1] == "completed"
 
     @pytest.mark.asyncio
-    async def test_worker_under_max_retries_raises_for_retry(self, mock_worker):
-        """测试Worker在重试次数内抛出异常，让RabbitMQ自动重试"""
+    async def test_worker_under_max_retries_sends_to_retry(self, mock_worker):
+        """测试Worker在重试次数内让RabbitMQ自动重试（不抛出异常到consumer）"""
         mock_message = MagicMock()
         mock_message.body = json.dumps({
             "task_id": "task-002",
@@ -561,9 +561,9 @@ class TestPDFValidationWorker:
         mock_process_cm.__aexit__ = AsyncMock(return_value=None)
         mock_message.process.return_value = mock_process_cm
 
-        # process_message raises exception to trigger RabbitMQ retry via DLX
-        with pytest.raises(Exception, match="Processing error"):
-            await mock_worker.process_message(mock_message)
+        # process_message should NOT raise - exception is swallowed by outer try-except
+        # after message.process() rejects it to DLX for retry
+        await mock_worker.process_message(mock_message)
 
         # Should update task status to processing then fail
         mock_worker.task_store.update_status.assert_called()
