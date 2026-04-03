@@ -152,14 +152,21 @@ class PDFValidationWorker:
                             logger.info("Task completed", references_count=len(references), duration_seconds=duration)
 
                         except Exception as e:
-                            logger.error("Task processing error", error=str(e))
+                            # Extract error_code from exception if available
+                            error_code = getattr(e, 'error_code', None)
+
+                            # Log with exc_info so structlog can format traceback properly
+                            logger.error(
+                                "Task processing error",
+                                error=str(e),
+                                error_code=error_code,
+                                exc_info=True,
+                            )
 
                             # Update metrics: failed
                             tasks_failed.labels(permanent="false").inc()
                             tasks_active.labels(status="processing").dec()
 
-                            # Extract error_code from exception if available
-                            error_code = getattr(e, 'error_code', None)
                             error_msg = f"{str(e)}\n{traceback.format_exc()}"
 
                             # Check if max retries exceeded
