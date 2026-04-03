@@ -491,6 +491,7 @@ class TestPDFValidationWorker:
         from src.api.worker.consumer import PDFValidationWorker
         worker = PDFValidationWorker()
         worker.task_store = AsyncMock()
+        worker.task_store.get_task = AsyncMock(return_value={"retry_count": 0})
         worker.queue = AsyncMock()
         worker.pipeline = AsyncMock()
         return worker
@@ -550,8 +551,10 @@ class TestPDFValidationWorker:
             "filename": "test.pdf",
             "pdf_path": "/tmp/test.pdf",
             "search_mode": "local",
-            "retry_count": 0  # 未达到最大重试次数
         }).encode()
+
+        # Mock get_task to return retry_count=0 (under max)
+        mock_worker.task_store.get_task = AsyncMock(return_value={"retry_count": 0})
 
         # Simulate pipeline failure
         mock_worker.pipeline.process_pdf.side_effect = Exception("Processing error")
@@ -567,6 +570,8 @@ class TestPDFValidationWorker:
 
         # Should update task status to processing then fail
         mock_worker.task_store.update_status.assert_called()
+        # Should increment retry count
+        mock_worker.task_store.increment_retry.assert_called_once()
         # Should NOT publish to DLQ (will be retried via RabbitMQ DLX)
         mock_worker.queue.publish_to_dlq.assert_not_called()
 
@@ -579,8 +584,10 @@ class TestPDFValidationWorker:
             "filename": "test.pdf",
             "pdf_path": "/tmp/test.pdf",
             "search_mode": "local",
-            "retry_count": 3  # 已达到最大重试次数
         }).encode()
+
+        # Mock get_task to return retry_count=3 (at max)
+        mock_worker.task_store.get_task = AsyncMock(return_value={"retry_count": 3})
 
         mock_worker.pipeline.process_pdf.side_effect = Exception("Processing error")
 
@@ -600,6 +607,8 @@ class TestPDFValidationWorker:
 
         # Should publish to DLQ
         mock_worker.queue.publish_to_dlq.assert_called_once()
+        # Should NOT increment retry (already at max)
+        mock_worker.task_store.increment_retry.assert_not_called()
 
 
 class TestHealthEndpoint:
