@@ -1,4 +1,5 @@
 """RabbitMQ Consumer with structured logging."""
+
 import asyncio
 import json
 import signal
@@ -91,7 +92,9 @@ class PDFValidationWorker:
                 structlog.contextvars.bind_contextvars(task_id=task_id)
 
                 try:
-                    logger.info("Processing task", filename=filename, retry_count=retry_count)
+                    logger.info(
+                        "Processing task", filename=filename, retry_count=retry_count
+                    )
 
                     # Update metrics: pending -> processing
                     tasks_active.labels(status="pending").dec()
@@ -103,25 +106,34 @@ class PDFValidationWorker:
 
                     async with self.semaphore:
                         try:
-                            result = await self.pipeline.process_pdf(pdf_path, max_workers=5)
+                            result = await self.pipeline.process_pdf(
+                                pdf_path, max_workers=5
+                            )
 
                             references = [
                                 {
-                                    "title": item.get("paper", {}).get("title", "Unknown"),
+                                    "title": item.get("paper", {}).get(
+                                        "title", "Unknown"
+                                    ),
                                     "authors": item.get("paper", {}).get("authors", []),
                                     "status": "real"
-                                    if item.get("validation", {}).get("hallucination_type") == "Real"
-                                    else "hallucination",
-                                    "hallucination_type": item.get("validation", {}).get(
+                                    if item.get("validation", {}).get(
                                         "hallucination_type"
-                                    ),
+                                    )
+                                    == "Real"
+                                    else "hallucination",
+                                    "hallucination_type": item.get(
+                                        "validation", {}
+                                    ).get("hallucination_type"),
                                     "confidence": item.get("validation", {}).get(
                                         "confidence", 0
                                     ),
                                     "reasoning": item.get("validation", {}).get(
                                         "reasoning", ""
                                     ),
-                                    "evidence": item.get("validation", {}).get("evidence", []),
+                                    "evidence": item.get("validation", {}).get(
+                                        "evidence", []
+                                    ),
                                 }
                                 for item in result.get("results", [])
                             ]
@@ -149,11 +161,15 @@ class PDFValidationWorker:
                             task_duration_seconds.observe(duration)
                             tasks_active.labels(status="processing").dec()
 
-                            logger.info("Task completed", references_count=len(references), duration_seconds=duration)
+                            logger.info(
+                                "Task completed",
+                                references_count=len(references),
+                                duration_seconds=duration,
+                            )
 
                         except Exception as e:
                             # Extract error_code from exception if available
-                            error_code = getattr(e, 'error_code', None)
+                            error_code = getattr(e, "error_code", None)
 
                             # Log with exc_info so structlog can format traceback properly
                             logger.error(
@@ -172,7 +188,9 @@ class PDFValidationWorker:
                             # Check if max retries exceeded
                             if retry_count >= RABBITMQ_MAX_RETRIES:
                                 # Max retries exceeded: move to DLQ
-                                await self._handle_failure(data, task_id, error_msg, error_code)
+                                await self._handle_failure(
+                                    data, task_id, error_msg, error_code
+                                )
                                 # Swallow exception - message is manually handled (sent to DLQ)
                                 return
                             else:
@@ -187,9 +205,10 @@ class PDFValidationWorker:
             # or when retry_count < max and we want to reject to DLX for retry
             # Message will be rejected to DLX -> retry queue -> main queue
             logger.debug("Message rejected for retry", task_id=data.get("task_id"))
-            raise
 
-    async def _handle_failure(self, data: dict, task_id: str, error_msg: str, error_code: Optional[str] = None):
+    async def _handle_failure(
+        self, data: dict, task_id: str, error_msg: str, error_code: Optional[str] = None
+    ):
         """Handle task failure. Called when max retries exceeded.
 
         Note: Normal retries are handled automatically by RabbitMQ via DLX -> retry queue.
@@ -218,7 +237,11 @@ class PDFValidationWorker:
             error_msg,
         )
 
-        logger.info("Task moved to DLQ after max retries", task_id=task_id, retry_count=retry_count)
+        logger.info(
+            "Task moved to DLQ after max retries",
+            task_id=task_id,
+            retry_count=retry_count,
+        )
 
     async def run(self):
         await self.initialize()
@@ -230,7 +253,7 @@ class PDFValidationWorker:
         logger.info(
             "PDF Worker started",
             concurrency=WORKER_CONCURRENCY,
-            prefetch=WORKER_PREFETCH_COUNT
+            prefetch=WORKER_PREFETCH_COUNT,
         )
         logger.info("Press Ctrl+C to stop gracefully")
 
