@@ -78,120 +78,140 @@ class PDFValidationWorker:
             loop.add_signal_handler(sig, signal_handler)
 
     async def process_message(self, message: aio_pika.IncomingMessage):
-        async with message.process():
-            data = json.loads(message.body.decode())
-            task_id = data["task_id"]
-            filename = data["filename"]
-            pdf_path = data["pdf_path"]
-            search_mode = data.get("search_mode", "local")
-            retry_count = data.get("retry_count", 0)
+        try:
+            async with message.process():
+                data = json.loads(message.body.decode())
+                task_id = data["task_id"]
+                filename = data["filename"]
+                pdf_path = data["pdf_path"]
+                search_mode = data.get("search_mode", "local")
+                retry_count = data.get("retry_count", 0)
 
-            # Bind task_id to context so all subsequent logs include it
-            structlog.contextvars.bind_contextvars(task_id=task_id)
+                # Bind task_id to context so all subsequent logs include it
+                structlog.contextvars.bind_contextvars(task_id=task_id)
 
-            try:
-                logger.info("Processing task", filename=filename, retry_count=retry_count)
+                try:
+                    logger.info("Processing task", filename=filename, retry_count=retry_count)
 
-                # Update metrics: pending -> processing
-                tasks_active.labels(status="pending").dec()
-                tasks_active.labels(status="processing").inc()
+                    # Update metrics: pending -> processing
+                    tasks_active.labels(status="pending").dec()
+                    tasks_active.labels(status="processing").inc()
 
-                await self.task_store.update_status(task_id, TaskStatus.PROCESSING)
+                    await self.task_store.update_status(task_id, TaskStatus.PROCESSING)
 
-                start_time = time.time()
+                    start_time = time.time()
 
-                async with self.semaphore:
-                    try:
-                        result = await self.pipeline.process_pdf(pdf_path, max_workers=5)
+                    async with self.semaphore:
+                        try:
+                            result = await self.pipeline.process_pdf(pdf_path, max_workers=5)
 
-                        references = [
-                            {
-                                "title": item.get("paper", {}).get("title", "Unknown"),
-                                "authors": item.get("paper", {}).get("authors", []),
-                                "status": "real"
-                                if item.get("validation", {}).get("hallucination_type") == "Real"
-                                else "hallucination",
-                                "hallucination_type": item.get("validation", {}).get(
-                                    "hallucination_type"
-                                ),
-                                "confidence": item.get("validation", {}).get(
-                                    "confidence", 0
-                                ),
-                                "reasoning": item.get("validation", {}).get(
-                                    "reasoning", ""
-                                ),
-                                "evidence": item.get("validation", {}).get("evidence", []),
+                            references = [
+                                {
+                                    "title": item.get("paper", {}).get("title", "Unknown"),
+                                    "authors": item.get("paper", {}).get("authors", []),
+                                    "status": "real"
+                                    if item.get("validation", {}).get("hallucination_type") == "Real"
+                                    else "hallucination",
+                                    "hallucination_type": item.get("validation", {}).get(
+                                        "hallucination_type"
+                                    ),
+                                    "confidence": item.get("validation", {}).get(
+                                        "confidence", 0
+                                    ),
+                                    "reasoning": item.get("validation", {}).get(
+                                        "reasoning", ""
+                                    ),
+                                    "evidence": item.get("validation", {}).get("evidence", []),
+                                }
+                                for item in result.get("results", [])
+                            ]
+
+                            hallucination_count = sum(
+                                1 for r in references if r["status"] == "hallucination"
+                            )
+
+                            formatted_result = {
+                                "total_references": result.get("references_count", 0),
+                                "validated_count": result.get("validated_count", 0),
+                                "real_count": len(references) - hallucination_count,
+                                "hallucination_count": hallucination_count,
+                                "references": references,
+                                "duration_seconds": result.get("duration_seconds", 0),
                             }
-                            for item in result.get("results", [])
-                        ]
 
-                        hallucination_count = sum(
-                            1 for r in references if r["status"] == "hallucination"
-                        )
+                            await self.task_store.update_status(
+                                task_id, TaskStatus.COMPLETED, result=formatted_result
+                            )
 
-                        formatted_result = {
-                            "total_references": result.get("references_count", 0),
-                            "validated_count": result.get("validated_count", 0),
-                            "real_count": len(references) - hallucination_count,
-                            "hallucination_count": hallucination_count,
-                            "references": references,
-                            "duration_seconds": result.get("duration_seconds", 0),
-                        }
+                            # Update metrics: completed
+                            duration = time.time() - start_time
+                            tasks_completed.inc()
+                            task_duration_seconds.observe(duration)
+                            tasks_active.labels(status="processing").dec()
 
-                        await self.task_store.update_status(
-                            task_id, TaskStatus.COMPLETED, result=formatted_result
-                        )
+                            logger.info("Task completed", references_count=len(references), duration_seconds=duration)
 
-                        # Update metrics: completed
-                        duration = time.time() - start_time
-                        tasks_completed.inc()
-                        task_duration_seconds.observe(duration)
-                        tasks_active.labels(status="processing").dec()
+                        except Exception as e:
+                            logger.error("Task processing error", error=str(e))
 
-                        logger.info("Task completed", references_count=len(references), duration_seconds=duration)
+                            # Update metrics: failed
+                            tasks_failed.labels(permanent="false").inc()
+                            tasks_active.labels(status="processing").dec()
 
-                    except Exception as e:
-                        logger.error("Task processing error", error=str(e))
+                            # Extract error_code from exception if available
+                            error_code = getattr(e, 'error_code', None)
+                            error_msg = f"{str(e)}\n{traceback.format_exc()}"
 
-                        # Update metrics: failed
-                        tasks_failed.labels(permanent="false").inc()
-                        tasks_active.labels(status="processing").dec()
-
-                        # Extract error_code from exception if available
-                        error_code = getattr(e, 'error_code', None)
-                        error_msg = f"{str(e)}\n{traceback.format_exc()}"
-                        await self._handle_failure(data, task_id, error_msg, error_code)
-                        raise
-            finally:
-                # Clear contextvars after task processing
-                structlog.contextvars.clear_contextvars()
+                            # Check if max retries exceeded
+                            if retry_count >= RABBITMQ_MAX_RETRIES:
+                                # Max retries exceeded: move to DLQ
+                                await self._handle_failure(data, task_id, error_msg, error_code)
+                                # Swallow exception - message is manually handled (sent to DLQ)
+                                return
+                            else:
+                                # Let RabbitMQ handle retry via DLX -> retry queue -> main queue
+                                # Just raise to reject message
+                                raise
+                finally:
+                    # Clear contextvars after task processing
+                    structlog.contextvars.clear_contextvars()
+        except Exception:
+            # This should only happen for unexpected errors not caught in inner try-except
+            # or when retry_count < max and we want to reject to DLX for retry
+            # Message will be rejected to DLX -> retry queue -> main queue
+            logger.debug("Message rejected for retry", task_id=data.get("task_id"))
+            raise
 
     async def _handle_failure(self, data: dict, task_id: str, error_msg: str, error_code: Optional[str] = None):
-        retry_count = data.get("retry_count", 0) + 1
+        """Handle task failure. Called when max retries exceeded.
 
-        if retry_count <= RABBITMQ_MAX_RETRIES:
-            await self.task_store.update_status(
-                task_id,
-                TaskStatus.RETRYING,
-                error_code=error_code,
-                error_message=f"Attempt {retry_count}/{RABBITMQ_MAX_RETRIES}: {error_msg[:500]}",
-            )
-            await self.queue.publish_retry(
-                task_id,
-                data["filename"],
-                data["pdf_path"],
-                data.get("search_mode", "local"),
-                retry_count,
-            )
-        else:
-            await self.task_store.update_status(
-                task_id,
-                TaskStatus.FAILED_PERMANENTLY,
-                error_code=error_code,
-                error_message=f"Max retries exceeded: {error_msg[:1000]}",
-            )
-            # Update metrics: permanently failed
-            tasks_failed.labels(permanent="true").inc()
+        Note: Normal retries are handled automatically by RabbitMQ via DLX -> retry queue.
+        This method is only called when retry_count > RABBITMQ_MAX_RETRIES.
+        """
+        retry_count = data.get("retry_count", 0)
+
+        # Mark as permanently failed in database
+        await self.task_store.update_status(
+            task_id,
+            TaskStatus.FAILED_PERMANENTLY,
+            error_code=error_code,
+            error_message=f"Max retries ({RABBITMQ_MAX_RETRIES}) exceeded: {error_msg[:1000]}",
+        )
+
+        # Update metrics
+        tasks_failed.labels(permanent="true").inc()
+
+        # Send to DLQ manually (since RabbitMQ doesn't know about max retries)
+        await self.queue.publish_to_dlq(
+            task_id,
+            data["filename"],
+            data["pdf_path"],
+            data.get("search_mode", "local"),
+            retry_count,
+            error_msg,
+        )
+
+        logger.info("Task moved to DLQ after max retries", task_id=task_id, retry_count=retry_count)
 
     async def run(self):
         await self.initialize()
