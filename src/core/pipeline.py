@@ -49,7 +49,12 @@ class ValidationPipeline:
         except Exception as e:
             logger.error("Extraction failed", error=str(e))
             self._notify_callbacks("on_error", e)
-            raise ExtractionError(f"Failed to extract references from {path.name}: {e}") from e
+            # Preserve error_code from original exception if available
+            error_code = getattr(e, 'error_code', None)
+            raise ExtractionError(
+                f"Failed to extract references from {path.name}: {e}",
+                error_code=error_code
+            ) from e
 
         if not references:
             logger.warning("No references found.")
