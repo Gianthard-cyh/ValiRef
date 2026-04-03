@@ -22,6 +22,7 @@ from ...core.config import (
 from ...core.extract import PDFExtractor, TextExtractor
 from ...core.pipeline import ValidationPipeline
 from ...core.logger import get_logger
+from ...core.exceptions import get_error_code
 from ..schemas.api import TaskStatus
 from ..services.queue import MessageQueue
 from ..services.task_store import TaskStore
@@ -172,7 +173,7 @@ class PDFValidationWorker:
 
                         except Exception as e:
                             # Extract error_code from exception if available
-                            error_code = getattr(e, "error_code", None)
+                            error_code = get_error_code(e)
 
                             # Log with exc_info so structlog can format traceback properly
                             logger.error(

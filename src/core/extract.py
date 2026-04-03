@@ -172,16 +172,16 @@ class PDFExtractor(Extractor):
         Extract a list of referenced papers from a PDF file path
         """
         try:
-            doc = fitz.open(file_path)
+            with fitz.open(file_path) as doc:
+                text_parts = []
+                for page in doc:
+                    text_parts.append(page.get_text())
+                text = "".join(text_parts)
         except Exception as e:
             raise ExtractionError(
                 message=f"Failed to open PDF file: {str(e)}",
                 error_code=ErrorCode.PDF_CORRUPTED
             ) from e
-
-        text = ""
-        for page in doc:
-            text += page.get_text()
 
         return await self.text_extractor.extract(text)
 

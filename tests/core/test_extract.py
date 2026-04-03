@@ -218,7 +218,10 @@ class TestPDFExtractor:
 
         extractor = PDFExtractor(text_extractor=mock_text_extractor)
 
+        # Mock fitz.open as context manager
         mock_doc = MagicMock()
+        mock_doc.__enter__ = MagicMock(return_value=mock_doc)
+        mock_doc.__exit__ = MagicMock(return_value=False)
         mock_page = MagicMock()
         mock_page.get_text.return_value = ""  # Empty text
         mock_doc.__iter__ = MagicMock(return_value=iter([mock_page]))
@@ -249,8 +252,10 @@ class TestPDFExtractor:
 
         extractor = PDFExtractor(text_extractor=mock_text_extractor)
 
-        # Mock fitz.open
+        # Mock fitz.open as context manager
         mock_doc = MagicMock()
+        mock_doc.__enter__ = MagicMock(return_value=mock_doc)
+        mock_doc.__exit__ = MagicMock(return_value=False)
         mock_page = MagicMock()
         mock_page.get_text.return_value = "PDF content"
         mock_doc.__iter__ = MagicMock(return_value=iter([mock_page]))
@@ -270,7 +275,10 @@ class TestPDFExtractor:
 
         extractor = PDFExtractor(text_extractor=mock_text_extractor)
 
+        # Mock fitz.open as context manager
         mock_doc = MagicMock()
+        mock_doc.__enter__ = MagicMock(return_value=mock_doc)
+        mock_doc.__exit__ = MagicMock(return_value=False)
         mock_page = MagicMock()
         mock_page.get_text.return_value = "Content"
         mock_doc.__iter__ = MagicMock(return_value=iter([mock_page]))
@@ -291,7 +299,10 @@ class TestPDFExtractor:
 
         extractor = PDFExtractor(text_extractor=mock_text_extractor)
 
+        # Mock fitz.open as context manager
         mock_doc = MagicMock()
+        mock_doc.__enter__ = MagicMock(return_value=mock_doc)
+        mock_doc.__exit__ = MagicMock(return_value=False)
         mock_page = MagicMock()
         mock_page.get_text.return_value = "Content"
         mock_doc.__iter__ = MagicMock(return_value=iter([mock_page]))

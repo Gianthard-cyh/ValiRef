@@ -21,7 +21,7 @@ export const useTaskStore = defineStore('task', () => {
   const taskHistory = ref<TaskHistoryItem[]>([]);
 
   // Polling
-  let pollingInterval: ReturnType<typeof setInterval> | null = null;
+  let pollingInterval: ReturnType<typeof setTimeout> | null = null;
 
   // Load history from localStorage
   function loadHistory() {
@@ -189,14 +189,12 @@ export const useTaskStore = defineStore('task', () => {
     }
 
     const { getTaskStatus, getValidationResult } = useApi();
+    let pollDelay = 2000; // Start with 2 seconds
 
-    pollingInterval = setInterval(async () => {
+    const poll = async () => {
       try {
         const status = await getTaskStatus(taskId);
         currentStatus.value = status;
-
-        // Update history
-        addToHistory(taskId, filename, status.status);
 
         // Task completed
         if (status.status === 'completed') {
@@ -204,7 +202,7 @@ export const useTaskStore = defineStore('task', () => {
           currentResult.value = result;
           addToHistory(taskId, filename, 'completed', result);
           pageState.value = 'completed';
-          stopPolling();
+          return; // Stop polling
         }
 
         // Task failed - capture error_code
@@ -213,18 +211,27 @@ export const useTaskStore = defineStore('task', () => {
           errorCode.value = status.error_code;
           errorMessage.value = status.error_code ? undefined : '任务处理失败';
           addToHistory(taskId, filename, status.status, undefined, status.error_code);
-          stopPolling();
+          return; // Stop polling
         }
+
+        // Still processing - continue polling with exponential backoff (max 30s)
+        pollDelay = Math.min(pollDelay * 1.5, 30000);
+        pollingInterval = setTimeout(poll, pollDelay);
       } catch (e) {
         console.error('Polling error:', e);
+        // Retry on error with same delay
+        pollingInterval = setTimeout(poll, pollDelay);
       }
-    }, 2000);
+    };
+
+    // Start first poll
+    pollingInterval = setTimeout(poll, pollDelay);
   }
 
   // Stop polling
   function stopPolling() {
     if (pollingInterval) {
-      clearInterval(pollingInterval);
+      clearTimeout(pollingInterval);
       pollingInterval = null;
     }
   }

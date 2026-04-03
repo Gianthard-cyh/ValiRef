@@ -6,7 +6,14 @@ import time
 from .extract import PDFExtractor
 from .detector import HallucinationDetector
 from .logger import logger
-from .exceptions import ExtractionError, ValidationError, ValidationTimeoutError, AgentParseError, SearchError
+from .exceptions import (
+    ExtractionError,
+    ValidationError,
+    ValidationTimeoutError,
+    AgentParseError,
+    SearchError,
+    get_error_code,
+)
 from ..bench.schema import Paper
 from .callbacks import ValidationCallback
 
@@ -50,7 +57,7 @@ class ValidationPipeline:
             logger.error("Extraction failed", error=str(e))
             self._notify_callbacks("on_error", e)
             # Preserve error_code from original exception if available
-            error_code = getattr(e, 'error_code', None)
+            error_code = get_error_code(e)
             raise ExtractionError(
                 f"Failed to extract references from {path.name}: {e}",
                 error_code=error_code
