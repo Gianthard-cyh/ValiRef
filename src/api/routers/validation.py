@@ -88,6 +88,7 @@ async def get_result(request: Request, task_id: str):
         real_count=result.get("real_count", 0),
         hallucination_count=result.get("hallucination_count", 0),
         references=result.get("references", []),
+        error_code=task.get("error_code"),
         error_message=task.get("error_message"),
         created_at=task["created_at"].isoformat() if task.get("created_at") else "",
         completed_at=task["completed_at"].isoformat()
@@ -109,6 +110,7 @@ async def get_status(request: Request, task_id: str):
         task_id=task["task_id"],
         status=task["status"],
         filename=task["filename"],
+        error_code=task.get("error_code"),
         progress={
             "processed": task.get("progress_processed", 0),
             "total": task.get("progress_total", 0),

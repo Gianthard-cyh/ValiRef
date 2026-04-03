@@ -1,4 +1,4 @@
-import type { TaskHistoryItem, PDFValidationResult, TaskStatusResponse, TaskStatus } from '~/types/api';
+import type { TaskHistoryItem, PDFValidationResult, TaskStatusResponse, TaskStatus, ErrorCode } from '~/types/api';
 
 export type PageState = 'idle' | 'uploading' | 'processing' | 'completed' | 'error';
 
@@ -8,6 +8,7 @@ const MAX_HISTORY = 10;
 export const useTaskStore = defineStore('task', () => {
   // Page state
   const pageState = ref<PageState>('idle');
+  const errorCode = ref<ErrorCode | undefined>(undefined);
   const errorMessage = ref('');
 
   // Current task
@@ -57,9 +58,9 @@ export const useTaskStore = defineStore('task', () => {
           continue;
         }
 
-        // Task failed - update status
+        // Task failed - update status with error code
         if (['failed', 'failed_permanently'].includes(status.status)) {
-          addToHistory(task.task_id, task.filename, status.status);
+          addToHistory(task.task_id, task.filename, status.status, undefined, status.error_code);
           continue;
         }
 
@@ -78,7 +79,7 @@ export const useTaskStore = defineStore('task', () => {
   }
 
   // Add task to history
-  function addToHistory(taskId: string, filename: string, status: TaskStatus, result?: PDFValidationResult) {
+  function addToHistory(taskId: string, filename: string, status: TaskStatus, result?: PDFValidationResult, errorCodeFromStatus?: ErrorCode) {
     const existingIndex = taskHistory.value.findIndex(t => t.task_id === taskId);
     const item: TaskHistoryItem = {
       task_id: taskId,
@@ -86,6 +87,7 @@ export const useTaskStore = defineStore('task', () => {
       status,
       created_at: new Date().toISOString(),
       result,
+      error_code: errorCodeFromStatus,
     };
 
     if (existingIndex >= 0) {
@@ -116,10 +118,11 @@ export const useTaskStore = defineStore('task', () => {
       currentPDFFile.value = pdfFile;
     }
 
-    // If task failed in history, show error
+    // If task failed in history, show error with error_code
     if (['failed', 'failed_permanently'].includes(item.status)) {
       pageState.value = 'error';
-      errorMessage.value = '任务处理失败';
+      errorCode.value = item.error_code;
+      errorMessage.value = item.result?.error_message || '任务处理失败';
       return 'failed';
     }
 
@@ -167,11 +170,12 @@ export const useTaskStore = defineStore('task', () => {
         return 'completed';
       }
 
-      // Task failed
+      // Task failed - capture error_code
       if (['failed', 'failed_permanently'].includes(status.status)) {
-        addToHistory(taskId, item.filename, status.status);
+        addToHistory(taskId, item.filename, status.status, undefined, status.error_code);
         pageState.value = 'error';
-        errorMessage.value = '任务处理失败';
+        errorCode.value = status.error_code;
+        errorMessage.value = status.error_code ? undefined : '任务处理失败';
         return 'failed';
       }
     } catch (e) {
@@ -213,11 +217,12 @@ export const useTaskStore = defineStore('task', () => {
           stopPolling();
         }
 
-        // Task failed
+        // Task failed - capture error_code
         if (['failed', 'failed_permanently'].includes(status.status)) {
           pageState.value = 'error';
-          errorMessage.value = '任务处理失败';
-          addToHistory(taskId, filename, status.status);
+          errorCode.value = status.error_code;
+          errorMessage.value = status.error_code ? undefined : '任务处理失败';
+          addToHistory(taskId, filename, status.status, undefined, status.error_code);
           stopPolling();
         }
       } catch (e) {
@@ -238,6 +243,7 @@ export const useTaskStore = defineStore('task', () => {
   function reset() {
     stopPolling();
     pageState.value = 'idle';
+    errorCode.value = undefined;
     errorMessage.value = '';
     currentTaskId.value = '';
     currentStatus.value = null;
@@ -260,6 +266,7 @@ export const useTaskStore = defineStore('task', () => {
 
   return {
     pageState,
+    errorCode,
     errorMessage,
     currentTaskId,
     currentStatus,

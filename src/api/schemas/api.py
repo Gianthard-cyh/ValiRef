@@ -42,6 +42,7 @@ class PDFValidationResult(BaseModel):
     real_count: int
     hallucination_count: int
     references: List[ReferenceResult]
+    error_code: Optional[str] = None
     error_message: Optional[str] = None
     created_at: str
     completed_at: Optional[str] = None
@@ -53,6 +54,7 @@ class TaskStatusResponse(BaseModel):
     task_id: str
     status: TaskStatus
     filename: str
+    error_code: Optional[str] = None
     progress: Optional[dict] = None
     created_at: str
     completed_at: Optional[str] = None

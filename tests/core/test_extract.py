@@ -6,6 +6,7 @@ import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
 
 from src.core.extract import TextExtractor, PDFExtractor, Extractor
+from src.core.exceptions import ExtractionError, ErrorCode
 from src.bench.schema import Paper
 
 
@@ -22,6 +23,94 @@ class TestTextExtractor:
         extractor = TextExtractor(llm=mock_llm)
 
         assert extractor.model == mock_llm
+
+    @pytest.mark.asyncio
+    async def test_extract_empty_text_raises_pdf_no_text(self):
+        """Test extract raises ExtractionError with PDF_NO_TEXT for empty text."""
+        mock_llm = MagicMock()
+        extractor = TextExtractor(llm=mock_llm)
+
+        with pytest.raises(ExtractionError) as exc_info:
+            await extractor.extract("")
+
+        assert exc_info.value.error_code == ErrorCode.PDF_NO_TEXT
+        assert "no text" in exc_info.value.message.lower()
+
+    @pytest.mark.asyncio
+    async def test_extract_whitespace_only_raises_pdf_no_text(self):
+        """Test extract raises ExtractionError for whitespace-only text."""
+        mock_llm = MagicMock()
+        extractor = TextExtractor(llm=mock_llm)
+
+        with pytest.raises(ExtractionError) as exc_info:
+            await extractor.extract("   \n\t  ")
+
+        assert exc_info.value.error_code == ErrorCode.PDF_NO_TEXT
+
+    @pytest.mark.asyncio
+    async def test_extract_short_text_raises_pdf_too_short(self):
+        """Test extract raises ExtractionError with PDF_TOO_SHORT for short text."""
+        mock_llm = MagicMock()
+        extractor = TextExtractor(llm=mock_llm)
+
+        with pytest.raises(ExtractionError) as exc_info:
+            await extractor.extract("Short text")  # Less than 500 chars
+
+        assert exc_info.value.error_code == ErrorCode.PDF_TOO_SHORT
+        assert "too short" in exc_info.value.message.lower()
+
+    @pytest.mark.asyncio
+    async def test_extract_none_result_raises_extraction_failed(self):
+        """Test extract raises ExtractionError when LLM returns None."""
+        mock_llm = MagicMock()
+        mock_structured = MagicMock()
+        mock_chain = MagicMock()
+        mock_chain.ainvoke = AsyncMock(return_value=None)
+        mock_structured.__or__ = MagicMock(return_value=mock_chain)
+        mock_llm.with_structured_output.return_value = mock_structured
+
+        extractor = TextExtractor(llm=mock_llm)
+
+        # Mock the prompt chain setup
+        from langchain_core.prompts import ChatPromptTemplate
+
+        with patch.object(
+            ChatPromptTemplate,
+            "from_template",
+            return_value=MagicMock(__or__=MagicMock(return_value=mock_chain)),
+        ):
+            with pytest.raises(ExtractionError) as exc_info:
+                await extractor.extract("A" * 1000)  # Valid length text
+
+        assert exc_info.value.error_code == ErrorCode.EXTRACTION_FAILED
+        assert "None" in exc_info.value.message
+
+    @pytest.mark.asyncio
+    async def test_extract_empty_references_raises_no_references_found(self):
+        """Test extract raises ExtractionError when no references found."""
+        mock_result = MagicMock()
+        mock_result.references = []
+
+        mock_llm = MagicMock()
+        mock_structured = MagicMock()
+        mock_chain = MagicMock()
+        mock_chain.ainvoke = AsyncMock(return_value=mock_result)
+        mock_structured.__or__ = MagicMock(return_value=mock_chain)
+        mock_llm.with_structured_output.return_value = mock_structured
+
+        extractor = TextExtractor(llm=mock_llm)
+
+        from langchain_core.prompts import ChatPromptTemplate
+
+        with patch.object(
+            ChatPromptTemplate,
+            "from_template",
+            return_value=MagicMock(__or__=MagicMock(return_value=mock_chain)),
+        ):
+            with pytest.raises(ExtractionError) as exc_info:
+                await extractor.extract("A" * 1000)
+
+        assert exc_info.value.error_code == ErrorCode.NO_REFERENCES_FOUND
 
     @pytest.mark.asyncio
     async def test_extract_with_mock_llm(self):
@@ -57,8 +146,8 @@ class TestTextExtractor:
         ):
             extractor = TextExtractor(llm=mock_llm)
 
-            # Execute
-            text = "References\n1. Test Paper by Author One, Author Two (2023)"
+            # Execute with long enough text
+            text = "References\n1. Test Paper by Author One, Author Two (2023)" + "A" * 500
             papers = await extractor.extract(text)
 
             # Verify
@@ -66,21 +155,6 @@ class TestTextExtractor:
             assert papers[0].title == "Test Paper"
             assert papers[0].authors == ["Author One", "Author Two"]
             assert papers[0].id == "2301.12345"
-
-    @pytest.mark.asyncio
-    async def test_extract_returns_empty_list_on_none_result(self):
-        """Test extract returns empty list when LLM returns None."""
-        mock_llm = MagicMock()
-        mock_structured = MagicMock()
-        mock_chain = MagicMock()
-        mock_chain.ainvoke = AsyncMock(return_value=None)
-        mock_structured.__or__ = MagicMock(return_value=mock_chain)
-        mock_llm.with_structured_output.return_value = mock_structured
-
-        extractor = TextExtractor(llm=mock_llm)
-
-        papers = await extractor.extract("Some text")
-        assert papers == []
 
     @pytest.mark.asyncio
     async def test_extract_batch(self):
@@ -120,6 +194,40 @@ class TestPDFExtractor:
         extractor = PDFExtractor(text_extractor=mock_text_extractor)
 
         assert extractor.text_extractor == mock_text_extractor
+
+    @pytest.mark.asyncio
+    async def test_extract_corrupted_pdf_raises_pdf_corrupted(self):
+        """Test extract raises ExtractionError when PDF cannot be opened."""
+        mock_text_extractor = MagicMock(spec=TextExtractor)
+        extractor = PDFExtractor(text_extractor=mock_text_extractor)
+
+        with patch("fitz.open", side_effect=Exception("Invalid PDF header")):
+            with pytest.raises(ExtractionError) as exc_info:
+                await extractor.extract("/path/to/corrupted.pdf")
+
+        assert exc_info.value.error_code == ErrorCode.PDF_CORRUPTED
+        assert "Failed to open PDF" in exc_info.value.message
+
+    @pytest.mark.asyncio
+    async def test_extract_empty_pdf_raises_pdf_no_text(self):
+        """Test extract raises ExtractionError when PDF has no text."""
+        mock_text_extractor = MagicMock(spec=TextExtractor)
+        mock_text_extractor.extract = AsyncMock(
+            side_effect=ExtractionError("PDF contains no text", error_code=ErrorCode.PDF_NO_TEXT)
+        )
+
+        extractor = PDFExtractor(text_extractor=mock_text_extractor)
+
+        mock_doc = MagicMock()
+        mock_page = MagicMock()
+        mock_page.get_text.return_value = ""  # Empty text
+        mock_doc.__iter__ = MagicMock(return_value=iter([mock_page]))
+
+        with patch("fitz.open", return_value=mock_doc):
+            with pytest.raises(ExtractionError) as exc_info:
+                await extractor.extract("/path/to/empty.pdf")
+
+        assert exc_info.value.error_code == ErrorCode.PDF_NO_TEXT
 
     @pytest.mark.asyncio
     async def test_extract_delegates_to_text_extractor(self):

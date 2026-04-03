@@ -72,7 +72,7 @@ services:
       - pdf_storage:/tmp/valiref/pdfs
     # API 暴露给宿主机，由全局 Caddy 反代
     ports:
-      - "127.0.0.1:8001:8000"
+      - "127.0.0.1:8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -109,8 +109,6 @@ services:
       HF_ENDPOINT: https://hf-mirror.com
     volumes:
       - pdf_storage:/tmp/valiref/pdfs
-    ports:
-      - "8001"  # 暴露 metrics 端口，不映射到宿主机
     depends_on:
       postgres:
         condition: service_healthy

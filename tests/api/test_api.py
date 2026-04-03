@@ -375,6 +375,35 @@ class TestAPIRoutes:
         assert data["status"] == "completed"
         assert data["total_references"] == 10
 
+    def test_get_result_with_error_code(self, mock_app_state):
+        """测试查询失败任务返回 error_code"""
+        from src.api.main import app
+        from datetime import datetime
+
+        mock_app_state.task_store.get_task.return_value = {
+            "task_id": "task-124",
+            "status": "failed_permanently",
+            "filename": "corrupted.pdf",
+            "result": None,
+            "error_code": "pdf_corrupted",
+            "error_message": "Failed to open PDF file: Invalid PDF header",
+            "created_at": datetime.now(),
+            "completed_at": datetime.now()
+        }
+
+        with patch.object(app, 'state', mock_app_state):
+            from fastapi.testclient import TestClient
+            client = TestClient(app)
+
+            response = client.get("/validation/result/task-124")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["task_id"] == "task-124"
+        assert data["status"] == "failed_permanently"
+        assert data["error_code"] == "pdf_corrupted"
+        assert "Invalid PDF" in data["error_message"]
+
     def test_get_result_not_found(self, mock_app_state):
         """测试查询不存在的任务返回404"""
         from src.api.main import app
@@ -414,6 +443,33 @@ class TestAPIRoutes:
         assert data["status"] == "processing"
         assert data["progress"]["processed"] == 5
         assert data["progress"]["total"] == 10
+
+    def test_get_status_with_error_code(self, mock_app_state):
+        """测试查询任务状态包含 error_code"""
+        from src.api.main import app
+        from datetime import datetime
+
+        mock_app_state.task_store.get_task.return_value = {
+            "task_id": "task-457",
+            "status": "failed_permanently",
+            "filename": "scanned.pdf",
+            "error_code": "pdf_no_text",
+            "progress_processed": 0,
+            "progress_total": 0,
+            "created_at": datetime.now()
+        }
+
+        with patch.object(app, 'state', mock_app_state):
+            from fastapi.testclient import TestClient
+            client = TestClient(app)
+
+            response = client.get("/validation/status/task-457")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["task_id"] == "task-457"
+        assert data["status"] == "failed_permanently"
+        assert data["error_code"] == "pdf_no_text"
 
     def test_get_stats(self, mock_app_state):
         """测试获取队列统计信息"""

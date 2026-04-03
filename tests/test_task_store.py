@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 asyncpg_logger = logging.getLogger('asyncpg')
 asyncpg_logger.setLevel(logging.DEBUG)
 
+
 @pytest.mark.asyncio
 async def test_update_status():
     """测试 update_status 方法"""
@@ -88,5 +89,51 @@ async def test_update_status():
         logger.error(traceback.format_exc())
         sys.exit(1)
 
+
+@pytest.mark.asyncio
+async def test_update_status_with_error_code():
+    """测试 update_status 方法支持 error_code"""
+    try:
+        from src.api.services.task_store import TaskStore
+        from src.api.schemas.api import TaskStatus
+        from src.core.exceptions import ErrorCode
+        import uuid
+
+        logger.info("=== Starting TaskStore error_code test ===")
+
+        store = TaskStore()
+        await store.initialize()
+
+        # 创建测试任务
+        task_id = str(uuid.uuid4())
+        await store.create_task(task_id, "test.pdf", "/tmp/test.pdf", {})
+
+        # 测试带 error_code 的失败状态
+        await store.update_status(
+            task_id,
+            TaskStatus.FAILED_PERMANENTLY,
+            error_code=ErrorCode.PDF_CORRUPTED,
+            error_message="PDF file is corrupted"
+        )
+
+        # 验证
+        task = await store.get_task(task_id)
+        logger.info(f"Task after FAILED: error_code={task.get('error_code')}, error_message={task.get('error_message')}")
+        assert task['status'] == 'failed_permanently'
+        assert task['error_code'] == 'pdf_corrupted', f"Expected 'pdf_corrupted', got '{task.get('error_code')}'"
+        assert "corrupted" in task['error_message'].lower(), f"Expected error message about corruption, got '{task.get('error_message')}'"
+
+        logger.info("=== error_code test passed! ===")
+
+        await store.close()
+
+    except Exception as e:
+        logger.error(f"Test failed: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     asyncio.run(test_update_status())
+    asyncio.run(test_update_status_with_error_code())

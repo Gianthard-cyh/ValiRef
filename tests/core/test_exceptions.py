@@ -8,13 +8,59 @@ from src.core.pipeline import ValidationPipeline
 from src.core.detector import HallucinationDetector
 from src.core.search.base import SearchTool
 from src.core.exceptions import (
+    ValirefError,
     ExtractionError,
     ValidationError,
     ValidationTimeoutError,
     AgentParseError,
     SearchError,
+    ErrorCode,
 )
 from src.bench.schema import Paper
+
+
+class TestValirefErrorBase:
+    """Tests for base ValirefError with error_code."""
+
+    def test_error_without_error_code(self):
+        """ValirefError can be created without error_code (backward compatible)."""
+        err = ValirefError("Something went wrong")
+        assert str(err) == "Something went wrong"
+        assert err.message == "Something went wrong"
+        assert err.error_code is None
+
+    def test_error_with_error_code(self):
+        """ValirefError can have error_code for frontend."""
+        err = ValirefError("PDF corrupted", error_code=ErrorCode.PDF_CORRUPTED)
+        assert str(err) == "PDF corrupted"
+        assert err.message == "PDF corrupted"
+        assert err.error_code == "pdf_corrupted"
+
+    def test_error_code_constants(self):
+        """ErrorCode constants should be strings."""
+        assert ErrorCode.PDF_CORRUPTED == "pdf_corrupted"
+        assert ErrorCode.PDF_NO_TEXT == "pdf_no_text"
+        assert ErrorCode.PDF_TOO_SHORT == "pdf_too_short"
+        assert ErrorCode.EXTRACTION_FAILED == "extraction_failed"
+        assert ErrorCode.NO_REFERENCES_FOUND == "no_references_found"
+        assert ErrorCode.VALIDATION_TIMEOUT == "validation_timeout"
+        assert ErrorCode.SEARCH_FAILED == "search_failed"
+        assert ErrorCode.AGENT_PARSE_ERROR == "agent_parse_error"
+
+
+class TestExtractionErrorWithErrorCode:
+    """Tests for ExtractionError with error_code."""
+
+    def test_extraction_error_inherits_error_code(self):
+        """ExtractionError inherits error_code from ValirefError."""
+        err = ExtractionError("PDF corrupted", error_code=ErrorCode.PDF_CORRUPTED)
+        assert err.error_code == "pdf_corrupted"
+        assert isinstance(err, ValirefError)
+
+    def test_extraction_error_without_code(self):
+        """ExtractionError works without error_code."""
+        err = ExtractionError("Generic extraction failure")
+        assert err.error_code is None
 
 
 class TestPipelineExceptions:

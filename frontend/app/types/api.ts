@@ -2,6 +2,17 @@ export type TaskStatus = 'pending' | 'processing' | 'retrying' | 'completed' | '
 
 export type HallucinationType = 'Real' | 'Fabrication' | 'AttributionError' | 'Irrelevance' | 'Counterfactual';
 
+// Error codes from backend
+export type ErrorCode =
+  | 'pdf_corrupted'
+  | 'pdf_no_text'
+  | 'pdf_too_short'
+  | 'extraction_failed'
+  | 'no_references_found'
+  | 'validation_timeout'
+  | 'search_failed'
+  | 'agent_parse_error';
+
 export interface PDFValidationResponse {
   task_id: string;
   status: TaskStatus;
@@ -28,6 +39,7 @@ export interface PDFValidationResult {
   real_count: number;
   hallucination_count: number;
   references: ReferenceResult[];
+  error_code?: ErrorCode;
   error_message?: string;
   created_at: string;
   completed_at?: string;
@@ -38,6 +50,7 @@ export interface TaskStatusResponse {
   task_id: string;
   status: TaskStatus;
   filename: string;
+  error_code?: ErrorCode;
   progress?: {
     processed: number;
     total: number;
@@ -50,6 +63,7 @@ export interface TaskHistoryItem {
   task_id: string;
   filename: string;
   status: TaskStatus;
+  error_code?: ErrorCode;
   created_at: string;
   result?: PDFValidationResult;
 }

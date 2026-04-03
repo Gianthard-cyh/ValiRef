@@ -5,6 +5,7 @@ import signal
 import time
 import traceback
 from pathlib import Path
+from typing import Optional
 
 import aio_pika
 import structlog
@@ -156,20 +157,23 @@ class PDFValidationWorker:
                         tasks_failed.labels(permanent="false").inc()
                         tasks_active.labels(status="processing").dec()
 
+                        # Extract error_code from exception if available
+                        error_code = getattr(e, 'error_code', None)
                         error_msg = f"{str(e)}\n{traceback.format_exc()}"
-                        await self._handle_failure(data, task_id, error_msg)
+                        await self._handle_failure(data, task_id, error_msg, error_code)
                         raise
             finally:
                 # Clear contextvars after task processing
                 structlog.contextvars.clear_contextvars()
 
-    async def _handle_failure(self, data: dict, task_id: str, error_msg: str):
+    async def _handle_failure(self, data: dict, task_id: str, error_msg: str, error_code: Optional[str] = None):
         retry_count = data.get("retry_count", 0) + 1
 
         if retry_count <= RABBITMQ_MAX_RETRIES:
             await self.task_store.update_status(
                 task_id,
                 TaskStatus.RETRYING,
+                error_code=error_code,
                 error_message=f"Attempt {retry_count}/{RABBITMQ_MAX_RETRIES}: {error_msg[:500]}",
             )
             await self.queue.publish_retry(
@@ -183,6 +187,7 @@ class PDFValidationWorker:
             await self.task_store.update_status(
                 task_id,
                 TaskStatus.FAILED_PERMANENTLY,
+                error_code=error_code,
                 error_message=f"Max retries exceeded: {error_msg[:1000]}",
             )
             # Update metrics: permanently failed

@@ -15,6 +15,7 @@ from .config import (
     EXTRACTION_CHAR_LIMIT,
 )
 from .logger import logger
+from .exceptions import ExtractionError, ErrorCode
 
 """
 Extract structured information from the input
@@ -62,6 +63,20 @@ class TextExtractor(Extractor):
         """
         Extract a list of referenced papers from a text string
         """
+        # Validate input text
+        if not text or not text.strip():
+            raise ExtractionError(
+                message="PDF contains no text content (possibly a scanned image PDF)",
+                error_code=ErrorCode.PDF_NO_TEXT
+            )
+
+        stripped_text = text.strip()
+        if len(stripped_text) < 500:
+            raise ExtractionError(
+                message=f"PDF text too short ({len(stripped_text)} chars), cannot extract references",
+                error_code=ErrorCode.PDF_TOO_SHORT
+            )
+
         prompt = ChatPromptTemplate.from_template(
             "You are an expert researcher. Extract a list of referenced/cited research papers from the following text segment.\n"
             "The text is the END of a research paper, containing the References/Bibliography section.\n"
@@ -107,10 +122,16 @@ class TextExtractor(Extractor):
         result = await chain.ainvoke({"text": truncated_text})
 
         if result is None:
-            logger.warning(
-                "Failed to extract papers: LLM returned None. The references might be outside the truncated text window."
+            raise ExtractionError(
+                message="LLM extraction returned None. The references might be outside the truncated text window.",
+                error_code=ErrorCode.EXTRACTION_FAILED
             )
-            return []
+
+        if not result.references:
+            raise ExtractionError(
+                message="No references found in the PDF. The document might not contain a references section, or it might be in an unsupported format.",
+                error_code=ErrorCode.NO_REFERENCES_FOUND
+            )
 
         papers = []
         for ref in result.references:
@@ -150,7 +171,14 @@ class PDFExtractor(Extractor):
         """
         Extract a list of referenced papers from a PDF file path
         """
-        doc = fitz.open(file_path)
+        try:
+            doc = fitz.open(file_path)
+        except Exception as e:
+            raise ExtractionError(
+                message=f"Failed to open PDF file: {str(e)}",
+                error_code=ErrorCode.PDF_CORRUPTED
+            ) from e
+
         text = ""
         for page in doc:
             text += page.get_text()

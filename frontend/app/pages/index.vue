@@ -45,7 +45,14 @@
         <div class="absolute inset-0 pointer-events-none hidden dark:block bg-surface-dark-tertiary"
              style="background-image: repeating-linear-gradient(315deg, var(--pattern-fg-dark, #404040) 0, var(--pattern-fg-dark, #404040) 1px, transparent 0, transparent 50%); background-size: 30px 30px;" />
 
-        <UploadView />
+        <UploadView v-if="pageState === 'idle'" />
+        <ErrorView
+          v-else
+          :error-code="errorCode"
+          :error-message="errorMessage || currentResult?.error_message"
+          @reset="reset"
+          @retry="retryCurrentTask"
+        />
       </div>
 
       <!-- Processing State -->
@@ -70,8 +77,8 @@ const colorMode = useColorMode({
   },
 });
 
-const { pageState, currentResult, currentPDFFile } = storeToRefs(taskStore);
-const { reset } = taskStore;
+const { pageState, currentResult, currentPDFFile, errorCode, errorMessage, currentTaskId } = storeToRefs(taskStore);
+const { reset, loadFromHistory } = taskStore;
 
 const pdfUrl = ref<string>('');
 const starCount = ref<number>(0);
@@ -96,6 +103,13 @@ onMounted(() => {
 
 function toggleTheme() {
   colorMode.value = colorMode.value === 'dark' ? 'light' : 'dark';
+}
+
+// Retry current failed task
+async function retryCurrentTask() {
+  if (currentTaskId.value) {
+    await loadFromHistory(currentTaskId.value);
+  }
 }
 
 watch(currentResult, (result) => {
