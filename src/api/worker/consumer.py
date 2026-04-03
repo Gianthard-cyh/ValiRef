@@ -87,10 +87,9 @@ class PDFValidationWorker:
                 pdf_path = data["pdf_path"]
                 search_mode = data.get("search_mode", "local")
 
-                # Calculate retry count from message headers (RabbitMQ x-death)
-                # x-death header contains rejection history
-                x_death = message.headers.get("x-death", []) if message.headers else []
-                retry_count = len(x_death)
+                # Get retry count from database (tracks actual retries)
+                task = await self.task_store.get_task(task_id)
+                retry_count = task.get("retry_count", 0) if task else 0
 
                 # Bind task_id to context so all subsequent logs include it
                 structlog.contextvars.bind_contextvars(task_id=task_id)
@@ -198,6 +197,11 @@ class PDFValidationWorker:
                                 # Swallow exception - message is manually handled (sent to DLQ)
                                 return
                             else:
+                                # Update retry count in database before letting RabbitMQ retry
+                                await self.task_store.increment_retry(
+                                    task_id,
+                                    f"Attempt {retry_count + 1}/{RABBITMQ_MAX_RETRIES}: {error_msg[:500]}"
+                                )
                                 # Let RabbitMQ handle retry via DLX -> retry queue -> main queue
                                 # Just raise to reject message
                                 raise
