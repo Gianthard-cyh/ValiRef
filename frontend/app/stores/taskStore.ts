@@ -107,7 +107,7 @@ export const useTaskStore = defineStore('task', () => {
     saveHistory();
   }
 
-  // Load result from history
+  // Load result from history - always fetch latest from API
   async function loadFromHistory(taskId: string): Promise<'completed' | 'processing' | 'failed' | null> {
     const item = taskHistory.value.find(t => t.task_id === taskId);
     if (!item) return null;
@@ -118,29 +118,7 @@ export const useTaskStore = defineStore('task', () => {
       currentPDFFile.value = pdfFile;
     }
 
-    // If task failed in history, show error with error_code
-    if (['failed', 'failed_permanently'].includes(item.status)) {
-      pageState.value = 'error';
-      errorCode.value = item.error_code;
-      errorMessage.value = item.result?.error_message || '任务处理失败';
-      return 'failed';
-    }
-
-    // If has result and not failed, show completed page
-    if (item.result) {
-      currentTaskId.value = taskId;
-      currentResult.value = item.result;
-      currentStatus.value = {
-        task_id: taskId,
-        filename: item.filename,
-        status: 'completed',
-        created_at: item.created_at,
-      };
-      pageState.value = 'completed';
-      return 'completed';
-    }
-
-    // Check current status from API
+    // Always fetch latest status from API
     try {
       const { getTaskStatus, getValidationResult } = useApi();
       const status = await getTaskStatus(taskId);
@@ -161,7 +139,7 @@ export const useTaskStore = defineStore('task', () => {
         return 'processing';
       }
 
-      // Task completed but no result in history (should fetch result)
+      // Task completed - fetch result and update history
       if (status.status === 'completed') {
         const result = await getValidationResult(taskId);
         currentResult.value = result;
@@ -170,7 +148,7 @@ export const useTaskStore = defineStore('task', () => {
         return 'completed';
       }
 
-      // Task failed - capture error_code
+      // Task failed - capture error_code from API
       if (['failed', 'failed_permanently'].includes(status.status)) {
         addToHistory(taskId, item.filename, status.status, undefined, status.error_code);
         pageState.value = 'error';
@@ -180,6 +158,18 @@ export const useTaskStore = defineStore('task', () => {
       }
     } catch (e) {
       console.error('Failed to load task status:', e);
+      // Fallback to cached data if API fails
+      if (item.result) {
+        currentResult.value = item.result;
+        pageState.value = 'completed';
+        return 'completed';
+      }
+      if (['failed', 'failed_permanently'].includes(item.status)) {
+        pageState.value = 'error';
+        errorCode.value = item.error_code;
+        errorMessage.value = item.result?.error_message || '任务处理失败';
+        return 'failed';
+      }
       return null;
     }
 
