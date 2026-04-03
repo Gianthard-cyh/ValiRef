@@ -108,5 +108,5 @@ volumes:
   pgadmin_data:
 
 networks:
-  valiref-network:
+  valiref_valiref-network:
     external: true
