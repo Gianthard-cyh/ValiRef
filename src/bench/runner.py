@@ -19,12 +19,13 @@ from rich.progress import (
 
 from src.core.logger import logger
 from src.core.tool_monitor import ToolMetricsCollector
+from src.core.types import ValidationResult
 from src.bench.schema import Paper
 from src.bench.metrics.calculation import _calculate_multiclass_metrics
 from src.bench.metrics.dataclasses import BenchmarkResult, MultiClassMetrics, SampleResult
 
 if TYPE_CHECKING:
-    from src.core.detector import HallucinationDetector, ValidationResult
+    from src.core.detector import HallucinationDetector
 
 
 class BenchmarkRunner:
@@ -165,9 +166,6 @@ class BenchmarkRunner:
             semaphore = asyncio.Semaphore(max_workers)
 
             async def validate_sample(paper: Paper) -> SampleResult:
-                # Local import to avoid circular dependency
-                from src.core.detector import ValidationResult
-
                 ground_truth_type = self._get_ground_truth_type(paper)
                 sample_start = time.time()
 

@@ -1,10 +1,10 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import List, Optional, Callable
 import fitz  # pymupdf
 from langchain_deepseek import ChatDeepSeek
 from langchain_core.prompts import ChatPromptTemplate
 
-from ..bench.schema import Paper, ReferenceList
+from ..bench.schema import Paper, ReferenceList, Reference
 from .config import (
     DEEPSEEK_API_KEY,
     LLM_MODEL,
@@ -14,7 +14,6 @@ from .config import (
     LLM_MAX_RETRIES,
     EXTRACTION_CHAR_LIMIT,
 )
-from .logger import logger
 from .exceptions import ExtractionError, ErrorCode
 
 """
@@ -59,22 +58,27 @@ class TextExtractor(Extractor):
                 api_key=DEEPSEEK_API_KEY,
             )
 
-    async def extract(self, text: str) -> List[Paper]:
+    async def extract(
+        self,
+        text: str,
+        on_progress: Optional[Callable[[int, List[Reference]], None]] = None,
+    ) -> List[Paper]:
         """
-        Extract a list of referenced papers from a text string
+        Extract a list of referenced papers from a text string.
+        If on_progress is provided, streams partial results during extraction.
         """
         # Validate input text
         if not text or not text.strip():
             raise ExtractionError(
                 message="PDF contains no text content (possibly a scanned image PDF)",
-                error_code=ErrorCode.PDF_NO_TEXT
+                error_code=ErrorCode.PDF_NO_TEXT,
             )
 
         stripped_text = text.strip()
         if len(stripped_text) < 500:
             raise ExtractionError(
                 message=f"PDF text too short ({len(stripped_text)} chars), cannot extract references",
-                error_code=ErrorCode.PDF_TOO_SHORT
+                error_code=ErrorCode.PDF_TOO_SHORT,
             )
 
         prompt = ChatPromptTemplate.from_template(
@@ -119,18 +123,31 @@ class TextExtractor(Extractor):
         structured_llm = self.model.with_structured_output(ReferenceList)
         chain = prompt | structured_llm
 
-        result = await chain.ainvoke({"text": truncated_text})
+        # Use streaming if progress callback is provided
+        if on_progress:
+            last_count = 0
+            result: Optional[ReferenceList] = None
+
+            async for partial in chain.astream({"text": truncated_text}):
+                result = partial
+                if partial.references and len(partial.references) > last_count:
+                    new_count = len(partial.references)
+                    new_refs = partial.references[last_count:new_count]
+                    on_progress(new_count, new_refs)
+                    last_count = new_count
+        else:
+            result = await chain.ainvoke({"text": truncated_text})
 
         if result is None:
             raise ExtractionError(
                 message="LLM extraction returned None. The references might be outside the truncated text window.",
-                error_code=ErrorCode.EXTRACTION_FAILED
+                error_code=ErrorCode.EXTRACTION_FAILED,
             )
 
         if not result.references:
             raise ExtractionError(
                 message="No references found in the PDF. The document might not contain a references section, or it might be in an unsupported format.",
-                error_code=ErrorCode.NO_REFERENCES_FOUND
+                error_code=ErrorCode.NO_REFERENCES_FOUND,
             )
 
         papers = []
@@ -144,9 +161,7 @@ class TextExtractor(Extractor):
                 authors=ref.authors,
                 published_date=ref.date,
                 url=f"https://arxiv.org/abs/{ref.arxiv_id}" if ref.arxiv_id else "N/A",
-                pdf_url=f"https://arxiv.org/pdf/{ref.arxiv_id}.pdf"
-                if ref.arxiv_id
-                else None,
+                pdf_url=f"https://arxiv.org/pdf/{ref.arxiv_id}.pdf" if ref.arxiv_id else None,
                 venue=ref.venue,
             )
             papers.append(paper)
@@ -167,9 +182,14 @@ class PDFExtractor(Extractor):
             text_extractor if text_extractor is not None else TextExtractor()
         )
 
-    async def extract(self, file_path: str) -> List[Paper]:
+    async def extract(
+        self,
+        file_path: str,
+        on_progress: Optional[Callable[[int, List[Reference]], None]] = None,
+    ) -> List[Paper]:
         """
-        Extract a list of referenced papers from a PDF file path
+        Extract a list of referenced papers from a PDF file path.
+        If on_progress is provided, streams partial results during extraction.
         """
         try:
             with fitz.open(file_path) as doc:
@@ -183,7 +203,7 @@ class PDFExtractor(Extractor):
                 error_code=ErrorCode.PDF_CORRUPTED
             ) from e
 
-        return await self.text_extractor.extract(text)
+        return await self.text_extractor.extract(text, on_progress=on_progress)
 
     async def extract_batch(self, file_paths: List[str]) -> List[List[Paper]]:
         """Extract lists of referenced papers from a batch of PDF file paths."""

@@ -21,7 +21,6 @@ from src.core.config import (
 )
 from src.core.logger import logger
 from src.bench.crawler import PaperCrawler
-from src.bench.schema import Paper
 from src.bench.dataset.dataset import BenchmarkDataset
 from src.bench.hallucination import (
     _generate_attribution_errors_batch,

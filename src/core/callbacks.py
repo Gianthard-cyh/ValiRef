@@ -1,6 +1,7 @@
 from typing import List, Dict, Any
 from abc import ABC
-from ..bench.schema import Paper
+from ..bench.schema import Paper, Reference
+from .state import PipelineState
 
 
 class ValidationCallback(ABC):
@@ -40,4 +41,12 @@ class ValidationCallback(ABC):
 
     def on_error(self, error: Exception):
         """Called when a critical pipeline error occurs."""
+        pass
+
+    def on_phase_change(self, state: PipelineState):
+        """Called when pipeline phase changes."""
+        pass
+
+    def on_extraction_progress(self, state: PipelineState, new_refs: List[Reference]):
+        """Called during streaming extraction when new references are found."""
         pass

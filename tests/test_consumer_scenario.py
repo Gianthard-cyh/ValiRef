@@ -39,9 +39,9 @@ async def test_consumer_scenario():
         await store.create_task(task_id, "test.pdf", "/tmp/test.pdf", {})
 
         # 4. 模拟 consumer: 立即更新状态（这是 consumer 第67行的操作）
-        logger.info(f"[Consumer] Updating status to PROCESSING...")
+        logger.info("[Consumer] Updating status to PROCESSING...")
         await store.update_status(task_id, TaskStatus.PROCESSING)
-        logger.info(f"[Consumer] Status updated!")
+        logger.info("[Consumer] Status updated!")
 
         # 5. 验证
         task = await store.get_task(task_id)
@@ -51,9 +51,9 @@ async def test_consumer_scenario():
         logger.info("[Consumer] Simulating long processing...")
         await asyncio.sleep(2)
 
-        logger.info(f"[Consumer] Updating status to COMPLETED...")
+        logger.info("[Consumer] Updating status to COMPLETED...")
         await store.update_status(task_id, TaskStatus.COMPLETED, result={"test": True})
-        logger.info(f"[Consumer] Status updated!")
+        logger.info("[Consumer] Status updated!")
 
         logger.info("=== 测试通过！===")
         await store.close()

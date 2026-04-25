@@ -5,7 +5,6 @@ import json
 import signal
 import time
 import traceback
-from pathlib import Path
 from typing import Optional
 
 import aio_pika
@@ -13,8 +12,6 @@ import structlog
 
 from src.core.logger import set_logger_mode
 from ...core.config import (
-    RABBITMQ_URL,
-    RABBITMQ_QUEUE_NAME,
     RABBITMQ_MAX_RETRIES,
     WORKER_CONCURRENCY,
     WORKER_PREFETCH_COUNT,
@@ -32,6 +29,7 @@ from ..services.metrics import (
     tasks_active,
     task_duration_seconds,
 )
+from ..worker.progress_callback import WorkerProgressCallback
 from prometheus_client import start_http_server
 
 # Configure logging for backend (JSON format)
@@ -57,9 +55,9 @@ class PDFValidationWorker:
         pdf_extractor = PDFExtractor(text_extractor=text_extractor)
         detector = create_detector(llm=llm, search_mode="local")
 
-        self.pipeline = ValidationPipeline(
-            extractor=pdf_extractor, detector=detector, callbacks=[]
-        )
+        # Pipeline will be created per-task with progress callback
+        self.extractor = pdf_extractor
+        self.detector = detector
 
         await self.task_store.initialize()
         await self.queue.connect()
@@ -86,7 +84,8 @@ class PDFValidationWorker:
                 task_id = data["task_id"]
                 filename = data["filename"]
                 pdf_path = data["pdf_path"]
-                search_mode = data.get("search_mode", "local")
+                # search_mode is reserved for future use (online vs local search)
+                _search_mode = data.get("search_mode", "local")
 
                 # Get retry count from database (tracks actual retries)
                 task = await self.task_store.get_task(task_id)
@@ -108,9 +107,21 @@ class PDFValidationWorker:
 
                     start_time = time.time()
 
+                    # Create progress callback for this task
+                    progress_callback = WorkerProgressCallback(
+                        self.task_store, task_id
+                    )
+
+                    # Create pipeline with progress callback
+                    pipeline = ValidationPipeline(
+                        extractor=self.extractor,
+                        detector=self.detector,
+                        callbacks=[progress_callback],
+                    )
+
                     async with self.semaphore:
                         try:
-                            result = await self.pipeline.process_pdf(
+                            result = await pipeline.process_pdf(
                                 pdf_path, max_workers=5
                             )
 

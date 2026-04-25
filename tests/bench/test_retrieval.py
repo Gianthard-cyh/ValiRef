@@ -4,14 +4,13 @@ Unit tests for retrieval evaluation subsystem.
 import json
 import os
 import tempfile
-from unittest.mock import MagicMock, AsyncMock, patch, mock_open
+from unittest.mock import patch
 
 import pytest
 
 from src.bench.retrieval.eval_search import (
     EvalLocalSearch,
     QueryRecord,
-    PaperGroundTruth,
 )
 from src.bench.retrieval.evaluator import (
     RetrievalEvaluator,

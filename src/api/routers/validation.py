@@ -1,5 +1,4 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Request
-from fastapi.responses import JSONResponse
 from uuid import uuid4
 import json
 
@@ -10,8 +9,6 @@ from ..schemas.api import (
     QueueStatsResponse,
     TaskStatus,
 )
-from ..services.task_store import TaskStore
-from ..services.queue import MessageQueue
 from ..services.pdf_storage import PDFStorage
 from ...core.config import API_MAX_UPLOAD_SIZE
 
@@ -111,12 +108,14 @@ async def get_status(request: Request, task_id: str):
         status=task["status"],
         filename=task["filename"],
         error_code=task.get("error_code"),
+        stage=task.get("stage"),
         progress={
             "processed": task.get("progress_processed", 0),
             "total": task.get("progress_total", 0),
         }
         if task.get("progress_total", 0) > 0
         else None,
+        current_title=task.get("current_title"),
         created_at=task["created_at"].isoformat() if task.get("created_at") else "",
         completed_at=task["completed_at"].isoformat()
         if task.get("completed_at")

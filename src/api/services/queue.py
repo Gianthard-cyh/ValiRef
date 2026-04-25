@@ -5,7 +5,7 @@ from datetime import datetime
 from ...core.config import (
     RABBITMQ_URL, RABBITMQ_QUEUE_NAME,
     RABBITMQ_DLQ_NAME, RABBITMQ_DLX_NAME,
-    RABBITMQ_MAX_RETRIES, RABBITMQ_MESSAGE_TTL
+    RABBITMQ_MESSAGE_TTL
 )
 
 

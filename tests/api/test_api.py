@@ -2,7 +2,6 @@
 
 import pytest
 import json
-import asyncio
 from pathlib import Path
 from unittest.mock import Mock, patch, AsyncMock, MagicMock
 from datetime import datetime
@@ -493,7 +492,8 @@ class TestPDFValidationWorker:
         worker.task_store = AsyncMock()
         worker.task_store.get_task = AsyncMock(return_value={"retry_count": 0})
         worker.queue = AsyncMock()
-        worker.pipeline = AsyncMock()
+        worker.extractor = AsyncMock()
+        worker.detector = AsyncMock()
         return worker
 
     @pytest.mark.asyncio
@@ -508,7 +508,15 @@ class TestPDFValidationWorker:
             "retry_count": 0
         }).encode()
 
-        mock_worker.pipeline.process_pdf.return_value = {
+        # Create async context manager mock for message.process()
+        mock_process_cm = MagicMock()
+        mock_process_cm.__aenter__ = AsyncMock(return_value=None)
+        mock_process_cm.__aexit__ = AsyncMock(return_value=None)
+        mock_message.process.return_value = mock_process_cm
+
+        # Mock ValidationPipeline class
+        mock_pipeline_instance = AsyncMock()
+        mock_pipeline_instance.process_pdf.return_value = {
             "references_count": 2,
             "validated_count": 2,
             "duration_seconds": 10.5,
@@ -524,13 +532,8 @@ class TestPDFValidationWorker:
             ]
         }
 
-        # Create async context manager mock for message.process()
-        mock_process_cm = MagicMock()
-        mock_process_cm.__aenter__ = AsyncMock(return_value=None)
-        mock_process_cm.__aexit__ = AsyncMock(return_value=None)
-        mock_message.process.return_value = mock_process_cm
-
-        await mock_worker.process_message(mock_message)
+        with patch("src.api.worker.consumer.ValidationPipeline", return_value=mock_pipeline_instance):
+            await mock_worker.process_message(mock_message)
 
         mock_worker.task_store.update_status.assert_called()
         # Verify the completed status update was called with results
@@ -556,17 +559,19 @@ class TestPDFValidationWorker:
         # Mock get_task to return retry_count=0 (under max)
         mock_worker.task_store.get_task = AsyncMock(return_value={"retry_count": 0})
 
-        # Simulate pipeline failure
-        mock_worker.pipeline.process_pdf.side_effect = Exception("Processing error")
-
         mock_process_cm = MagicMock()
         mock_process_cm.__aenter__ = AsyncMock(return_value=None)
         mock_process_cm.__aexit__ = AsyncMock(return_value=None)
         mock_message.process.return_value = mock_process_cm
 
-        # process_message should NOT raise - exception is swallowed by outer try-except
-        # after message.process() rejects it to DLX for retry
-        await mock_worker.process_message(mock_message)
+        # Mock ValidationPipeline class to simulate failure
+        mock_pipeline_instance = AsyncMock()
+        mock_pipeline_instance.process_pdf.side_effect = Exception("Processing error")
+
+        with patch("src.api.worker.consumer.ValidationPipeline", return_value=mock_pipeline_instance):
+            # process_message should NOT raise - exception is swallowed by outer try-except
+            # after message.process() rejects it to DLX for retry
+            await mock_worker.process_message(mock_message)
 
         # Should update task status to processing then fail
         mock_worker.task_store.update_status.assert_called()
@@ -589,15 +594,18 @@ class TestPDFValidationWorker:
         # Mock get_task to return retry_count=3 (at max)
         mock_worker.task_store.get_task = AsyncMock(return_value={"retry_count": 3})
 
-        mock_worker.pipeline.process_pdf.side_effect = Exception("Processing error")
-
         mock_process_cm = MagicMock()
         mock_process_cm.__aenter__ = AsyncMock(return_value=None)
         mock_process_cm.__aexit__ = AsyncMock(return_value=None)
         mock_message.process.return_value = mock_process_cm
 
-        # process_message should NOT raise - it handles the failure by sending to DLQ
-        await mock_worker.process_message(mock_message)
+        # Mock ValidationPipeline class to simulate failure
+        mock_pipeline_instance = AsyncMock()
+        mock_pipeline_instance.process_pdf.side_effect = Exception("Processing error")
+
+        with patch("src.api.worker.consumer.ValidationPipeline", return_value=mock_pipeline_instance):
+            # process_message should NOT raise - it handles the failure by sending to DLQ
+            await mock_worker.process_message(mock_message)
 
         # Should mark as failed_permanently
         calls = mock_worker.task_store.update_status.call_args_list

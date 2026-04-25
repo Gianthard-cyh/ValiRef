@@ -1,15 +1,12 @@
 """Tests for tool monitor."""
 
-import time
 from datetime import datetime, timedelta
 
-import pytest
 
 from src.core.tool_monitor import (
     ToolStats,
     ToolMetricsCollector,
     format_circuit_state,
-    CIRCUIT_STATE_DISPLAY,
 )
 
 

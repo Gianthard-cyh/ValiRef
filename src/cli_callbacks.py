@@ -11,7 +11,8 @@ from rich.progress import (
 )
 from src.core.callbacks import ValidationCallback
 from src.core.tool_monitor import ToolMetricsCollector
-from src.bench.schema import Paper
+from src.bench.schema import Paper, Reference
+from src.core.state import PipelineState, ValidationPhase
 
 
 class CliCallback(ValidationCallback):
@@ -34,11 +35,8 @@ class CliCallback(ValidationCallback):
         self.validation_task: Optional[TaskID] = None
 
     def on_pipeline_start(self, filename: str):
-        """启动Live显示和进度条"""
         if self.show_metrics:
-            # Create metrics collector without tool instances (signal-based tracking)
             self.metrics = ToolMetricsCollector(on_update=self._on_metrics_update)
-            # 启动Live显示工具统计
             self.live = Live(
                 self.metrics.get_stats_table(),
                 console=self.console,
@@ -53,7 +51,6 @@ class CliCallback(ValidationCallback):
         )
 
     def _on_metrics_update(self):
-        """指标更新时刷新Live"""
         if self.live and self.metrics:
             self.live.update(self.metrics.get_stats_table())
 
@@ -64,17 +61,11 @@ class CliCallback(ValidationCallback):
             )
         self.console.print(f"Extracted {len(references)} references.")
 
-    def on_validation_start(self, total_references: int):
-        self.validation_task = self.progress.add_task(
-            "Validating references...", total=total_references
-        )
-
     def on_reference_validation_end(self, paper: Paper, result: Dict[str, Any]):
         if self.validation_task is not None:
             self.progress.advance(self.validation_task)
 
     def on_reference_validation_error(self, paper: Paper, error: Exception):
-        # Print error above the progress bar
         self.progress.console.print(
             f"[red]Error validating '{paper.title[:30]}...': {error}[/red]"
         )
@@ -82,18 +73,14 @@ class CliCallback(ValidationCallback):
             self.progress.advance(self.validation_task)
 
     def on_pipeline_end(self, results: Dict[str, Any]):
-        """清理并显示最终统计"""
-        # 停止进度条
         self.progress.stop()
 
-        # 停止Live
         if self.live:
             self.live.stop()
             self.live = None
 
-        # 显示最终统计表格
         if self.metrics and self.show_metrics:
-            self.console.print()  # 空行
+            self.console.print()
             self.console.print(self.metrics.get_stats_table())
 
     def on_error(self, error: Exception):
@@ -101,3 +88,30 @@ class CliCallback(ValidationCallback):
         if self.live:
             self.live.stop()
         self.console.print(f"[bold red]Pipeline Error:[/bold red] {error}")
+
+    def on_phase_change(self, state: PipelineState):
+        if state.phase == ValidationPhase.EXTRACTION:
+            pass
+        elif state.phase == ValidationPhase.DETECTION:
+            if self.extraction_task is not None:
+                self.progress.update(
+                    self.extraction_task, completed=1, total=1, visible=False
+                )
+            self.console.print(f"[green]✓[/green] Extracted {state.extraction_found} references")
+            self.validation_task = self.progress.add_task(
+                f"Validating {state.detection_total} references...", total=state.detection_total
+            )
+        elif state.phase == ValidationPhase.ERROR:
+            self.progress.stop()
+            if self.live:
+                self.live.stop()
+
+    def on_extraction_progress(self, state: PipelineState, new_refs: List[Reference]):
+        if self.extraction_task is not None:
+            self.progress.update(
+                self.extraction_task,
+                description=f"Extracting references... {state.extraction_found} found"
+            )
+        for ref in new_refs:
+            if ref.title:
+                self.console.print(f"  [dim]• {ref.title[:60]}...[/dim]")

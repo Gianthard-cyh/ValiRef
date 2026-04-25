@@ -1,7 +1,7 @@
 import asyncpg
 import json
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional
 from ...core.config import DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME
 from ...core.logger import get_logger
 
@@ -58,6 +58,8 @@ class TaskStore:
                     retry_count INTEGER DEFAULT 0,
                     progress_processed INTEGER DEFAULT 0,
                     progress_total INTEGER DEFAULT 0,
+                    stage VARCHAR(20) DEFAULT NULL,
+                    current_title TEXT DEFAULT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     completed_at TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -148,6 +150,35 @@ class TaskStore:
                 error_message,
             )
             return row["retry_count"] if row else 0
+
+    async def update_progress(
+        self,
+        task_id: str,
+        stage: Optional[str] = None,
+        processed: Optional[int] = None,
+        total: Optional[int] = None,
+        current_title: Optional[str] = None,
+    ):
+        """Update task progress for real-time monitoring.
+
+        This method updates only the progress-related fields without touching
+        status or result fields to avoid conflicts with status updates.
+        """
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                """UPDATE pdf_validation_tasks
+                   SET stage = COALESCE($2, stage),
+                       progress_processed = COALESCE($3, progress_processed),
+                       progress_total = COALESCE($4, progress_total),
+                       current_title = COALESCE($5, current_title),
+                       updated_at = CURRENT_TIMESTAMP
+                   WHERE task_id = $1""",
+                task_id,
+                stage,
+                processed,
+                total,
+                current_title[:200] if current_title else None,  # Limit length
+            )
 
     async def get_status_stats(self) -> dict:
         async with self.pool.acquire() as conn:

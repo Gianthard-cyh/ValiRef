@@ -14,8 +14,9 @@ from .exceptions import (
     SearchError,
     get_error_code,
 )
-from ..bench.schema import Paper
+from ..bench.schema import Paper, Reference
 from .callbacks import ValidationCallback
+from .state import ValidationPhase, PipelineState
 
 
 class ValidationPipeline:
@@ -33,6 +34,8 @@ class ValidationPipeline:
         self.extractor = extractor if extractor is not None else PDFExtractor()
         self.detector = detector if detector is not None else HallucinationDetector()
         self.callbacks = callbacks or []
+        self.state = PipelineState()
+        self.state = PipelineState()
 
     async def process_pdf(self, pdf_path: str, max_workers: int = 10) -> Dict[str, Any]:
         """
@@ -43,20 +46,30 @@ class ValidationPipeline:
 
         self._check_file_exists(path)
 
+        # Initialize state
+        self.state = PipelineState(current_file=path.name)
+
         logger.info("Starting extraction", filename=path.name)
         self._notify_callbacks("on_pipeline_start", path.name)
-        self._notify_callbacks("on_extraction_start", path.name)
 
         try:
-            references = await self.extractor.extract(str(path))
+            # Extraction phase
+            self._set_phase(ValidationPhase.EXTRACTION)
+            self._notify_callbacks("on_extraction_start", path.name)
+
+            references = await self.extractor.extract(
+                str(path),
+                on_progress=self._on_extraction_progress,
+            )
 
             logger.info("Extracted references", reference_count=len(references))
             self._notify_callbacks("on_extraction_end", references)
 
         except Exception as e:
+            self._set_phase(ValidationPhase.ERROR)
+            self.state.error = str(e)
             logger.error("Extraction failed", error=str(e))
             self._notify_callbacks("on_error", e)
-            # Preserve error_code from original exception if available
             error_code = get_error_code(e)
             raise ExtractionError(
                 f"Failed to extract references from {path.name}: {e}",
@@ -66,6 +79,10 @@ class ValidationPipeline:
         if not references:
             logger.warning("No references found.")
             return self._create_summary(path.name, start_time)
+
+        # Detection phase
+        self._set_phase(ValidationPhase.DETECTION)
+        self.state.detection_total = len(references)
 
         logger.info(
             "Starting validation",
@@ -78,10 +95,14 @@ class ValidationPipeline:
         try:
             results = await self._run_validation(references, max_workers)
         except Exception as e:
+            self._set_phase(ValidationPhase.ERROR)
+            self.state.error = str(e)
             logger.error("Pipeline failed", error=str(e))
             self._notify_callbacks("on_error", e)
             raise e
 
+        # Completion
+        self._set_phase(ValidationPhase.COMPLETED)
         summary = self._create_summary(
             path.name, start_time, references_count=len(references), results=results
         )
@@ -94,6 +115,17 @@ class ValidationPipeline:
         self._notify_callbacks("on_pipeline_end", summary)
 
         return summary
+
+    def _set_phase(self, phase: ValidationPhase):
+        """Update pipeline phase and notify callbacks."""
+        self.state.phase = phase
+        self._notify_callbacks("on_phase_change", self.state)
+
+    def _on_extraction_progress(self, count: int, new_refs: List[Reference]):
+        """Handle extraction progress updates."""
+        self.state.extraction_found = count
+        self.state.extracted_refs.extend(new_refs)
+        self._notify_callbacks("on_extraction_progress", self.state, new_refs)
 
     def _check_file_exists(self, path: Path):
         if not path.exists():
@@ -109,6 +141,8 @@ class ValidationPipeline:
 
         async def sem_task(index, paper):
             async with semaphore:
+                # Update current reference in state
+                self.state.current_reference = paper.title[:100] if paper.title else "Unknown"
                 res = await self._validate_single_reference(
                     paper, index, len(references)
                 )
@@ -121,6 +155,7 @@ class ValidationPipeline:
                 index, result = await future
                 if result:
                     results.append(result)
+                    self.state.detection_processed += 1
                     self._notify_callbacks(
                         "on_reference_validation_end", references[index], result
                     )

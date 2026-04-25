@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any, Dict, List
 
 from src.bench.schema import Paper
+from src.core.types import ValidationResult
 
 
 @dataclass
@@ -64,7 +65,7 @@ class SampleResult:
     """Result for a single sample."""
 
     paper: Paper
-    prediction: "ValidationResult"  # Forward reference to avoid circular import
+    prediction: ValidationResult  # Forward reference no longer needed
     ground_truth_type: str  # e.g., "Real", "Fabrication", "AttributionError", etc.
     correct: bool  # prediction.hallucination_type == ground_truth_type
 

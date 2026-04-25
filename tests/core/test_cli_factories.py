@@ -33,7 +33,7 @@ class TestCreateLLM:
             mock_llm_cls.return_value = mock_llm
 
             with patch("src.cli.DEEPSEEK_API_KEY", "test-api-key"):
-                llm = create_llm(temperature=0.1)
+                create_llm(temperature=0.1)
 
             call_kwargs = mock_llm_cls.call_args.kwargs
             assert call_kwargs["temperature"] == 0.1
@@ -107,7 +107,7 @@ class TestCreatePipeline:
                 mock_pdf_extractor_cls.return_value = mock_pdf_extractor
                 mock_pipeline_cls.return_value = mock_pipeline
 
-                result = create_pipeline()
+                create_pipeline()
 
                 # Verify dependencies were created
                 mock_create_llm.assert_called_once()

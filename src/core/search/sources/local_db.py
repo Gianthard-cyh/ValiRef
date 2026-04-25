@@ -7,17 +7,14 @@ import asyncpg
 from sentence_transformers import CrossEncoder
 
 from ...config import (
-    CROSSENCODER_DEVICE,
-    CROSSENCODER_MODEL_NAME,
     DB_HOST,
     DB_NAME,
     DB_PASSWORD,
     DB_PORT,
     DB_USER,
-    RERANK_CANDIDATE_MULTIPLIER,
 )
 from ...logger import logger
-from ..base import SearchResult, SearchTool, run_in_executor_cancellable
+from ..base import SearchResult, SearchTool
 
 
 class LocalDBSearch(SearchTool):

@@ -46,15 +46,19 @@ export interface PDFValidationResult {
   duration_seconds?: number;
 }
 
+export type TaskStage = 'extraction' | 'validation' | 'completed';
+
 export interface TaskStatusResponse {
   task_id: string;
   status: TaskStatus;
   filename: string;
   error_code?: ErrorCode;
+  stage?: TaskStage;
   progress?: {
     processed: number;
     total: number;
   };
+  current_title?: string;
   created_at: string;
   completed_at?: string;
 }

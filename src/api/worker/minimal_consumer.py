@@ -8,7 +8,7 @@ import asyncpg
 
 from ...core.config import (
     DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME,
-    RABBITMQ_QUEUE_NAME, RABBITMQ_URL, WORKER_PREFETCH_COUNT
+    WORKER_PREFETCH_COUNT
 )
 from ..services.queue import MessageQueue
 

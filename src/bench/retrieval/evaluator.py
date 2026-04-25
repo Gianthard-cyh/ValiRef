@@ -5,7 +5,7 @@
 import asyncio
 import csv
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List
 
 from ...core.detector import HallucinationDetector
 from ...core.logger import logger
@@ -28,7 +28,6 @@ class RetrievalEvalResult:
     def export_queries(self, filepath: str, format: str = "json") -> None:
         """导出所有查询记录到文件供后续分析"""
         import json
-        import csv
 
         if format == "json":
             data = [
@@ -73,7 +72,6 @@ class RetrievalEvaluator:
 
     def _load_samples(self, dataset_path: str, sample_size: int) -> List[Paper]:
         """Load samples from CSV dataset."""
-        import csv
         from ...bench.schema import Paper
 
         papers = []

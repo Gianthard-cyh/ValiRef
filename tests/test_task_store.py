@@ -49,7 +49,7 @@ async def test_update_status():
         logger.info(f"Task created: {task}")
 
         # 3. 测试 update_status - PROCESSING
-        logger.info(f"Step 3: Updating status to PROCESSING...")
+        logger.info("Step 3: Updating status to PROCESSING...")
         await store.update_status(task_id, TaskStatus.PROCESSING)
         logger.info("Status updated to PROCESSING")
 
@@ -59,7 +59,7 @@ async def test_update_status():
         assert task_after['status'] == 'processing', f"Expected 'processing', got '{task_after['status']}'"
 
         # 4. 测试 update_status - COMPLETED with result
-        logger.info(f"Step 4: Updating status to COMPLETED with result...")
+        logger.info("Step 4: Updating status to COMPLETED with result...")
         result = {
             "total_references": 10,
             "validated_count": 10,

@@ -2,9 +2,7 @@
 Unit tests for benchmark reporter module.
 """
 
-import pytest
 from unittest.mock import MagicMock, patch
-from io import StringIO
 
 from src.bench.reporter import BenchmarkReporter, print_results
 from src.bench.metrics.dataclasses import BenchmarkResult, MultiClassMetrics, SampleResult

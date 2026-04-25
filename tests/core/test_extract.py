@@ -265,7 +265,7 @@ class TestPDFExtractor:
 
         assert len(papers) == 1
         assert papers[0].title == "Test Paper"
-        mock_text_extractor.extract.assert_called_once_with("PDF content")
+        mock_text_extractor.extract.assert_called_once_with("PDF content", on_progress=None)
 
     @pytest.mark.asyncio
     async def test_extract_batch_delegates_to_extract(self):

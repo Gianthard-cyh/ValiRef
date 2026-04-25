@@ -1,6 +1,5 @@
 """Local aggregate search using ParadeDB."""
 from ...logger import logger
-from ..base import SearchResult
 from ..sources.local_db import LocalDBSearch
 from .utils import prune_search_result
 

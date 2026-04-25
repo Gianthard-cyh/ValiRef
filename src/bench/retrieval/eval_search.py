@@ -5,11 +5,10 @@
 import csv
 import json
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from difflib import SequenceMatcher
 from typing import List, Optional, TypedDict
 
-from ...core.logger import logger
 from ...core.search.base import SearchResult
 from ...core.search.sources.local_db import LocalDBSearch
 

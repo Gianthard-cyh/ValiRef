@@ -8,9 +8,7 @@ from src.bench.bench import (
 )
 from src.bench.dataset.dataset import BenchmarkDataset
 from src.bench.factory import BenchmarkDatasetFactory
-from src.bench.metrics import BenchmarkResult, MultiClassMetrics, SampleResult
-from src.bench.reporter import BenchmarkReporter, print_results
-from src.bench.runner import BenchmarkRunner
+from src.bench.reporter import BenchmarkReporter
 from src.bench.schema import Paper, PaperList, Reference, ReferenceList
 
 __all__ = [

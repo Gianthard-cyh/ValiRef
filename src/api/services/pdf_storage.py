@@ -1,5 +1,3 @@
-import os
-import shutil
 from pathlib import Path
 from typing import Optional
 from ...core.config import PDF_STORAGE_PATH

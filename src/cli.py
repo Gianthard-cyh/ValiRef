@@ -22,10 +22,9 @@ from src.core.config import (
     LLM_MAX_RETRIES,
 )
 from src.core.search_cache import get_cache, clear_cache
-from src.core.logger import set_logger_mode, get_logger
+from src.core.logger import set_logger_mode
 from src.bench import BenchmarkRunner, print_results
 from src.cli_callbacks import CliCallback
-import logging
 import asyncio
 import json
 
@@ -140,14 +139,16 @@ def validate(
             )
             console.print(f"[bold blue]Search mode:[/bold blue] {search_mode}")
 
-        return await pipeline.process_pdf(str(path), max_workers=max_workers)
+        results = await pipeline.process_pdf(str(path), max_workers=max_workers)
+
+        # 添加工具统计到结果（如果有callback且启用了metrics）
+        if callback and callback.metrics:
+            results["tool_stats"] = callback.metrics.get_summary()
+
+        return results
 
     try:
         results = asyncio.run(run_pipeline())
-
-        # 添加工具统计到结果（如果有callback且启用了metrics）
-        if "callback" in dir() and callback and callback.metrics:
-            results["tool_stats"] = callback.metrics.get_summary()
 
         if output_json:
             console.print(json.dumps(results, indent=2))

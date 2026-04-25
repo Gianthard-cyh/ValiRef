@@ -1,7 +1,6 @@
-from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from pydantic import BaseModel
+from typing import Optional, List, Dict
 from enum import Enum
-from datetime import datetime
 
 
 class TaskStatus(str, Enum):
@@ -55,7 +54,9 @@ class TaskStatusResponse(BaseModel):
     status: TaskStatus
     filename: str
     error_code: Optional[str] = None
+    stage: Optional[str] = None  # extraction | validation | completed
     progress: Optional[dict] = None
+    current_title: Optional[str] = None  # 当前正在验证的引用标题
     created_at: str
     completed_at: Optional[str] = None
 

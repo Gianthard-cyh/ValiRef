@@ -1,12 +1,17 @@
 """Tool call monitoring using blinker signals."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Any, Callable
+from typing import Dict, Optional, Any, Callable, TYPE_CHECKING
 from datetime import datetime, timedelta
 from collections import deque
 from blinker import signal
 import threading
 import time
+
+if TYPE_CHECKING:
+    from rich.table import Table
 
 # Define signals
 tool_call_started = signal("tool-call-started")

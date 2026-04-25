@@ -50,8 +50,6 @@ async def run_in_executor_cancellable(
     to the caller. The thread continues executing in background but the asyncio
     task is properly cancelled.
     """
-    loop = asyncio.get_running_loop()
-
     # Submit to shared thread pool
     future = _sync_executor.submit(func, *args)
 
