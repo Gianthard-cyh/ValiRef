@@ -34,7 +34,7 @@ class CliCallback(ValidationCallback):
         self.extraction_task: Optional[TaskID] = None
         self.validation_task: Optional[TaskID] = None
 
-    def on_pipeline_start(self, filename: str):
+    async def on_pipeline_start(self, filename: str):
         if self.show_metrics:
             self.metrics = ToolMetricsCollector(on_update=self._on_metrics_update)
             self.live = Live(
@@ -54,25 +54,25 @@ class CliCallback(ValidationCallback):
         if self.live and self.metrics:
             self.live.update(self.metrics.get_stats_table())
 
-    def on_extraction_end(self, references: List[Paper]):
+    async def on_extraction_end(self, references: List[Paper]):
         if self.extraction_task is not None:
             self.progress.update(
                 self.extraction_task, completed=1, total=1, visible=False
             )
         self.console.print(f"Extracted {len(references)} references.")
 
-    def on_reference_validation_end(self, paper: Paper, result: Dict[str, Any]):
+    async def on_reference_validation_end(self, paper: Paper, result: Dict[str, Any]):
         if self.validation_task is not None:
             self.progress.advance(self.validation_task)
 
-    def on_reference_validation_error(self, paper: Paper, error: Exception):
+    async def on_reference_validation_error(self, paper: Paper, error: Exception):
         self.progress.console.print(
             f"[red]Error validating '{paper.title[:30]}...': {error}[/red]"
         )
         if self.validation_task is not None:
             self.progress.advance(self.validation_task)
 
-    def on_pipeline_end(self, results: Dict[str, Any]):
+    async def on_pipeline_end(self, results: Dict[str, Any]):
         self.progress.stop()
 
         if self.live:
@@ -83,13 +83,13 @@ class CliCallback(ValidationCallback):
             self.console.print()
             self.console.print(self.metrics.get_stats_table())
 
-    def on_error(self, error: Exception):
+    async def on_error(self, error: Exception):
         self.progress.stop()
         if self.live:
             self.live.stop()
         self.console.print(f"[bold red]Pipeline Error:[/bold red] {error}")
 
-    def on_phase_change(self, state: PipelineState):
+    async def on_phase_change(self, state: PipelineState):
         if state.phase == ValidationPhase.EXTRACTION:
             pass
         elif state.phase == ValidationPhase.DETECTION:
@@ -106,7 +106,7 @@ class CliCallback(ValidationCallback):
             if self.live:
                 self.live.stop()
 
-    def on_extraction_progress(self, state: PipelineState, new_refs: List[Reference]):
+    async def on_extraction_progress(self, state: PipelineState, new_refs: List[Reference]):
         if self.extraction_task is not None:
             self.progress.update(
                 self.extraction_task,

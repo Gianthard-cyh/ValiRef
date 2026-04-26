@@ -78,7 +78,7 @@ class TestValidationPipeline:
         mock_detector = MagicMock()
         mock_detector.check_reference = AsyncMock(return_value=mock_validation_result)
 
-        mock_callback = MagicMock()
+        mock_callback = AsyncMock()
 
         pipeline = ValidationPipeline(
             extractor=mock_extractor,
@@ -128,7 +128,7 @@ class TestValidationPipeline:
         mock_detector = MagicMock()
         mock_detector.check_reference = AsyncMock(return_value=mock_validation_result)
 
-        mock_callback = MagicMock()
+        mock_callback = AsyncMock()
 
         pipeline = ValidationPipeline(
             extractor=mock_extractor,
@@ -156,7 +156,7 @@ class TestValidationPipeline:
         mock_extractor = MagicMock()
         mock_extractor.extract = AsyncMock(side_effect=Exception("Extraction failed"))
 
-        mock_callback = MagicMock()
+        mock_callback = AsyncMock()
 
         pipeline = ValidationPipeline(
             extractor=mock_extractor,
@@ -213,7 +213,7 @@ class TestValidationPipeline:
             side_effect=ValidationError("Validation failed")
         )
 
-        mock_callback = MagicMock()
+        mock_callback = AsyncMock()
 
         pipeline = ValidationPipeline(
             extractor=mock_extractor,
@@ -231,7 +231,7 @@ class TestValidationPipeline:
 
     def test_process_pdf_raises_for_missing_file(self):
         """Test process_pdf raises error for non-existent file."""
-        mock_callback = MagicMock()
+        mock_callback = AsyncMock()
 
         pipeline = ValidationPipeline(
             extractor=MagicMock(),

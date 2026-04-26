@@ -35,7 +35,6 @@ class ValidationPipeline:
         self.detector = detector if detector is not None else HallucinationDetector()
         self.callbacks = callbacks or []
         self.state = PipelineState()
-        self.state = PipelineState()
 
     async def process_pdf(self, pdf_path: str, max_workers: int = 10) -> Dict[str, Any]:
         """
@@ -232,7 +231,17 @@ class ValidationPipeline:
         return summary
 
     def _notify_callbacks(self, method_name: str, *args, **kwargs):
-        """Helper to notify all callbacks safely."""
+        """Helper to notify all callbacks safely without blocking."""
         for callback in self.callbacks:
             if hasattr(callback, method_name):
-                getattr(callback, method_name)(*args, **kwargs)
+                method = getattr(callback, method_name)
+                # All callbacks are now async, start in background
+                task = asyncio.create_task(method(*args, **kwargs))
+                task.add_done_callback(self._on_callback_done)
+
+    def _on_callback_done(self, task):
+        """Handle callback task completion and log any exceptions."""
+        try:
+            task.result()
+        except Exception as e:
+            logger.error("Callback task failed", error=str(e))
