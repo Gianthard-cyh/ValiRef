@@ -220,11 +220,17 @@ class PDFValidationWorker:
                 finally:
                     # Clear contextvars after task processing
                     structlog.contextvars.clear_contextvars()
-        except Exception:
+        except Exception as e:
             # This should only happen for unexpected errors not caught in inner try-except
             # or when retry_count < max and we want to reject to DLX for retry
             # Message will be rejected to DLX -> retry queue -> main queue
-            logger.debug("Message rejected for retry", task_id=data.get("task_id"))
+            logger.error(
+                "Message rejected for retry",
+                task_id=data.get("task_id") if 'data' in locals() else None,
+                error=str(e),
+                exc_info=True
+            )
+            raise  # Re-raise to trigger message rejection
 
     async def _handle_failure(
         self, data: dict, task_id: str, error_msg: str, error_code: Optional[str] = None
