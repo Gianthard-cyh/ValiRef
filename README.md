@@ -16,7 +16,7 @@
     <img src="https://img.shields.io/badge/python-3.12+-blue.svg" alt="Python 3.12+" />
     <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License: MIT" />
     <img src="https://img.shields.io/badge/async-first-purple.svg" alt="Async First" />
-    <a href="https://github.com/Gianthard-cyh/ValiRef/actions"><img src="https://github.com/Gianthard-cyh/ValiRef/workflows/CI/badge.svg" alt="CI Status" /></a>
+    <a href="https://github.com/Gianthard-cyh/ValiRef/actions"><img src="https://github.com/Gianthard-cyh/ValiRef/actions/workflows/deploy.yml/badge.svg" alt="CI Status" /></a>
     <img src="https://img.shields.io/github/stars/Gianthard-cyh/ValiRef?style=social" alt="GitHub Stars" />
   </p>
 </div>
