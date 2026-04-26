@@ -1,30 +1,34 @@
 <template>
   <div class="min-h-[calc(100vh-3.5rem)] flex flex-col items-center justify-center px-6 py-12 bg-surface-tertiary dark:bg-surface-dark-tertiary">
     <div class="w-full max-w-md text-center">
-      <div class="w-12 h-12 mx-auto mb-6 rounded-full bg-surface-secondary dark:bg-surface-dark-secondary border border-border dark:border-border-dark flex items-center justify-center">
-        <span class="i-lucide-loader-2 w-5 h-5 text-text dark:text-text-dark animate-spin" />
-      </div>
-
       <h2 class="text-title mb-1">正在验证</h2>
       <p class="text-small text-text-secondary dark:text-text-dark-secondary mb-8">{{ currentStatus?.filename }}</p>
 
       <!-- Two-Stage Progress -->
       <div class="w-full max-w-xs mx-auto mb-8">
-        <!-- Two-Stage Progress Bar -->
-        <div class="flex gap-2 h-2">
-          <!-- Stage 1: Extraction (20% weight) -->
-          <div class="relative flex-[1] bg-surface dark:bg-surface-dark border border-border-subtle dark:border-border-dark-subtle rounded-full overflow-hidden">
+        <!-- Progress Bars -->
+        <div class="flex gap-2 h-1.5">
+          <!-- Extraction Segment -->
+          <div
+            class="relative rounded-full overflow-hidden transition-[flex] duration-700 ease-[cubic-bezier(0.4,0,0.2,1)]"
+            :class="extractionStage === 'active' ? 'flex-[3]' : 'flex-[1]'"
+          >
+            <div class="absolute inset-0 bg-surface dark:bg-surface-dark border border-border-subtle dark:border-border-dark-subtle rounded-full" />
             <div
-              class="absolute inset-y-0 left-0 bg-text dark:bg-text-dark rounded-full transition-all duration-500 ease-out"
+              class="absolute inset-0 bg-text dark:bg-text-dark rounded-full transition-all duration-500 ease-out"
               :style="{ width: `${extractionProgress}%` }"
             >
               <div v-if="extractionStage === 'active'" class="absolute inset-0 shimmer-overlay" />
             </div>
           </div>
-          <!-- Stage 2: Validation (80% weight) -->
-          <div class="relative flex-[4] bg-surface dark:bg-surface-dark border border-border-subtle dark:border-border-dark-subtle rounded-full overflow-hidden">
+          <!-- Validation Segment -->
+          <div
+            class="relative rounded-full overflow-hidden transition-[flex] duration-700 ease-[cubic-bezier(0.4,0,0.2,1)]"
+            :class="validationStage === 'active' ? 'flex-[3]' : 'flex-[1]'"
+          >
+            <div class="absolute inset-0 bg-surface dark:bg-surface-dark border border-border-subtle dark:border-border-dark-subtle rounded-full" />
             <div
-              class="absolute inset-y-0 left-0 bg-text dark:bg-text-dark rounded-full transition-all duration-500 ease-out"
+              class="absolute inset-0 bg-text dark:bg-text-dark rounded-full transition-all duration-500 ease-out"
               :style="{ width: `${validationProgress}%` }"
             >
               <div v-if="validationStage === 'active'" class="absolute inset-0 shimmer-overlay" />
@@ -33,40 +37,71 @@
         </div>
 
         <!-- Stage Labels -->
-        <div class="flex gap-2 mt-3">
-          <div class="flex-[1] flex justify-center">
-            <div
-              class="w-6 h-6 rounded-full flex items-center justify-center transition-all duration-300"
-              :class="extractionStage === 'pending' ? 'bg-surface-secondary dark:bg-surface-dark-secondary text-text-tertiary dark:text-text-dark-tertiary' : 'bg-text dark:bg-text-dark text-surface dark:text-surface-dark'"
-              title="提取引用"
-            >
-              <span class="i-lucide-file-text w-3.5 h-3.5" />
+        <div class="flex gap-2 mt-2">
+          <!-- Extraction Label -->
+          <div
+            class="flex items-center justify-between transition-[flex] duration-700 ease-[cubic-bezier(0.4,0,0.2,1)]"
+            :class="extractionStage === 'active' ? 'flex-[3]' : 'flex-[1]'"
+          >
+            <div class="flex items-center gap-1.5">
+              <span
+                class="w-3.5 h-3.5 shrink-0"
+                :class="extractionStage === 'completed' ? 'i-lucide-check text-text dark:text-text-dark' : extractionStage === 'active' ? 'i-lucide-file-text text-text dark:text-text-dark' : 'i-lucide-file-text text-text-tertiary dark:text-text-dark-tertiary'"
+              />
+              <span
+                class="text-xs font-medium transition-colors duration-300"
+                :class="extractionStage === 'pending' ? 'text-text-tertiary dark:text-text-dark-tertiary' : 'text-text dark:text-text-dark'"
+              >
+                提取
+              </span>
             </div>
+            <span
+              v-if="extractionStage === 'active'"
+              class="text-xs text-text-secondary dark:text-text-dark-secondary"
+            >
+              {{ extractedCount }} 引用
+            </span>
           </div>
-          <div class="flex-[4] flex justify-center">
-            <div
-              class="w-6 h-6 rounded-full flex items-center justify-center transition-all duration-300"
-              :class="validationStage === 'pending' ? 'bg-surface-secondary dark:bg-surface-dark-secondary text-text-tertiary dark:text-text-dark-tertiary' : validationStage === 'active' ? 'bg-text dark:bg-text-dark text-surface dark:text-surface-dark' : 'bg-text dark:bg-text-dark text-surface dark:text-surface-dark'"
-              title="验证引用"
-            >
-              <span class="i-lucide-search w-3.5 h-3.5" />
+          <!-- Validation Label -->
+          <div
+            class="flex items-center justify-between transition-[flex] duration-700 ease-[cubic-bezier(0.4,0,0.2,1)]"
+            :class="validationStage === 'active' ? 'flex-[3]' : 'flex-[1]'"
+          >
+            <div class="flex items-center gap-1.5">
+              <span
+                class="w-3.5 h-3.5 shrink-0"
+                :class="validationStage === 'completed' ? 'i-lucide-check text-text dark:text-text-dark' : validationStage === 'active' ? 'i-lucide-search text-text dark:text-text-dark' : 'i-lucide-search text-text-tertiary dark:text-text-dark-tertiary'"
+              />
+              <span
+                class="text-xs font-medium transition-colors duration-300"
+                :class="validationStage === 'pending' ? 'text-text-tertiary dark:text-text-dark-tertiary' : 'text-text dark:text-text-dark'"
+              >
+                验证
+              </span>
             </div>
+            <span
+              v-if="validationStage === 'active'"
+              class="text-xs text-text-secondary dark:text-text-dark-secondary"
+            >
+              {{ currentStatus?.progress?.processed || 0 }}/{{ currentStatus?.progress?.total || 0 }}
+            </span>
           </div>
         </div>
       </div>
 
-      <!-- Current Title -->
-      <p v-if="currentTitle" class="text-small text-text-secondary dark:text-text-dark-secondary truncate px-4 mb-4">
-        <span class="text-text-tertiary">正在验证:</span> {{ currentTitle }}
-      </p>
+      <!-- Current Reference -->
+      <div v-if="currentTitle" class="h-8 flex items-center justify-center">
+        <p
+          :key="currentTitle"
+          class="text-small text-text-secondary dark:text-text-dark-secondary truncate px-4 title-fade-in"
+        >
+          {{ currentTitle }}
+        </p>
+      </div>
 
       <!-- Stats -->
-      <p class="mt-4 text-caption text-text-muted dark:text-text-dark-tertiary">
-        <template v-if="currentStatus?.progress">
-          {{ currentStatus.progress.processed }} / {{ currentStatus.progress.total }} 个引用
-          <span v-if="speed > 0" class="ml-2">| {{ speed }} 个/分钟</span>
-        </template>
-        <template v-else>准备中...</template>
+      <p v-if="speed > 0" class="mt-4 text-caption text-text-muted dark:text-text-dark-tertiary">
+        {{ speed }} 个/分钟
       </p>
     </div>
   </div>
@@ -103,13 +138,23 @@ const extractionProgress = computed(() => {
 const validationProgress = computed(() => {
   if (validationStage.value === 'completed') return 100;
   if (validationStage.value === 'pending') return 0;
-  // During validation, map overall progress (20-100%) to 0-100% of stage 2
-  const stage2Progress = progress.value - 20;
-  return Math.min(100, Math.max(0, (stage2Progress / 80) * 100));
+  // During validation, calculate based on processed/total
+  const status = currentStatus.value;
+  if (!status?.progress || status.progress.total === 0) return 0;
+  return Math.min(100, Math.max(0, (status.progress.processed / status.progress.total) * 100));
 });
 
 // Current title being validated
 const currentTitle = computed(() => currentStatus.value?.current_title);
+
+// Extracted reference count (shown during extraction phase)
+const extractedCount = computed(() => {
+  const status = currentStatus.value;
+  if (!status) return 0;
+  // During extraction, show total references found so far
+  // During validation, show total references
+  return status.progress?.total || 0;
+});
 
 // Calculate validation speed (references per minute)
 const speed = computed(() => {
@@ -137,21 +182,21 @@ const speed = computed(() => {
 .shimmer-overlay {
   background: linear-gradient(
     90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.25) 50%,
-    transparent 100%
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.4) 50%,
+    rgba(255, 255, 255, 0) 100%
   );
   background-size: 200% 100%;
-  animation: shimmer 1.5s infinite linear;
+  animation: shimmer 1.5s infinite ease-in-out;
   border-radius: inherit;
 }
 
 .dark .shimmer-overlay {
   background: linear-gradient(
     90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.15) 50%,
-    transparent 100%
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.25) 50%,
+    rgba(255, 255, 255, 0) 100%
   );
   background-size: 200% 100%;
 }
@@ -162,6 +207,35 @@ const speed = computed(() => {
   }
   100% {
     background-position: -200% 0;
+  }
+}
+
+.title-fade-in {
+  animation: titleFadeIn 0.4s ease-out;
+}
+
+@keyframes titleFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  .shimmer-overlay {
+    animation: none;
+    background: rgba(255, 255, 255, 0.15);
+  }
+  .dark .shimmer-overlay {
+    background: rgba(255, 255, 255, 0.1);
+  }
+  .title-fade-in {
+    animation: none;
   }
 }
 </style>
