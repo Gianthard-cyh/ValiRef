@@ -25,6 +25,9 @@ export default defineNuxtConfig({
           target: 'http://localhost:8000',
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api/, ''),
+          // Support SSE streaming
+          timeout: 0,
+          proxyTimeout: 0,
         },
       },
     },

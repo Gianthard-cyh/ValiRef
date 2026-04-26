@@ -14,9 +14,10 @@ logger = get_logger(__name__)
 class WorkerProgressCallback(ValidationCallback):
     """Callback that updates task progress in database for real-time monitoring."""
 
-    def __init__(self, task_store: TaskStore, task_id: str):
+    def __init__(self, task_store: TaskStore, task_id: str, queue=None):
         self.task_store = task_store
         self.task_id = task_id
+        self.queue = queue  # MessageQueue for SSE updates
         self.start_time = time.time()
         self.stage = "extraction"  # extraction | validation | completed
         self.processed = 0
@@ -128,7 +129,7 @@ class WorkerProgressCallback(ValidationCallback):
         await self._update_progress()
 
     async def _update_progress(self):
-        """Update progress in database."""
+        """Update progress in database and publish to MQ for SSE."""
         try:
             await self.task_store.update_progress(
                 task_id=self.task_id,
@@ -137,6 +138,20 @@ class WorkerProgressCallback(ValidationCallback):
                 total=self.total,
                 current_title=self.current_title
             )
+
+            # Publish to MQ for SSE streaming (if queue is available)
+            if self.queue and self.queue.channel:
+                try:
+                    await self.queue.publish_progress_update(
+                        task_id=self.task_id,
+                        stage=self.stage,
+                        processed=self.processed,
+                        total=self.total,
+                        current_title=self.current_title,
+                        status=self.stage if self.stage != "completed" else "completed"
+                    )
+                except Exception as e:
+                    logger.debug("Failed to publish progress update to MQ", error=str(e))
         except Exception as e:
             logger.error(
                 "Failed to update progress",

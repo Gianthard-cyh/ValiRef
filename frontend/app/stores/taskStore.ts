@@ -20,8 +20,8 @@ export const useTaskStore = defineStore('task', () => {
   // History
   const taskHistory = ref<TaskHistoryItem[]>([]);
 
-  // Polling
-  let pollingInterval: ReturnType<typeof setTimeout> | null = null;
+  // SSE
+  let eventSource: EventSource | null = null;
 
   // Load history from localStorage
   function loadHistory() {
@@ -176,64 +176,96 @@ export const useTaskStore = defineStore('task', () => {
     return null;
   }
 
-  // Start polling task status
-  async function startPolling(taskId: string, filename: string, file?: File) {
-    stopPolling();
+  // Start SSE connection for real-time updates
+  function connectSSE(taskId: string, filename: string) {
+    disconnectSSE(); // Close any existing connection
     currentTaskId.value = taskId;
     pageState.value = 'processing';
+
+    const { getTaskStatus, getValidationResult } = useApi();
+    const config = useRuntimeConfig();
+    const baseURL = config.public.apiBaseUrl || '/api';
+
+    eventSource = new EventSource(`${baseURL}/validation/stream/${taskId}`);
+
+    eventSource.onmessage = async (e) => {
+      // Ignore heartbeat
+      if (e.data.startsWith(':')) return;
+
+      try {
+        const data = JSON.parse(e.data);
+
+        // Update current status
+        currentStatus.value = {
+          task_id: taskId,
+          filename,
+          status: data.status,
+          stage: data.stage,
+          progress: {
+            processed: data.processed,
+            total: data.total,
+          },
+          current_title: data.current_title,
+          created_at: currentStatus.value?.created_at || new Date().toISOString(),
+        };
+
+        // Task completed
+        if (data.status === 'completed') {
+          disconnectSSE();
+          const result = await getValidationResult(taskId);
+          currentResult.value = result;
+          addToHistory(taskId, filename, 'completed', result);
+          pageState.value = 'completed';
+        }
+
+        // Task failed
+        if (['failed', 'failed_permanently'].includes(data.status)) {
+          disconnectSSE();
+          const status = await getTaskStatus(taskId);
+          errorCode.value = status.error_code;
+          errorMessage.value = status.error_code ? undefined : '任务处理失败';
+          addToHistory(taskId, filename, data.status, undefined, status.error_code);
+          pageState.value = 'error';
+        }
+      } catch (e) {
+        console.error('SSE message parse error:', e);
+      }
+    };
+
+    eventSource.onerror = () => {
+      // Connection error, close and retry after 3 seconds
+      disconnectSSE();
+      setTimeout(() => {
+        if (pageState.value === 'processing' && currentTaskId.value === taskId) {
+          connectSSE(taskId, filename);
+        }
+      }, 3000);
+    };
+  }
+
+  // Disconnect SSE
+  function disconnectSSE() {
+    if (eventSource) {
+      eventSource.close();
+      eventSource = null;
+    }
+  }
+
+  // Start polling (deprecated, use SSE instead)
+  async function startPolling(taskId: string, filename: string, file?: File) {
+    // Use SSE instead of polling
+    connectSSE(taskId, filename);
 
     // Save PDF to IndexedDB if provided
     if (file) {
       currentPDFFile.value = file;
       await savePDF(taskId, filename, file);
     }
-
-    const { getTaskStatus, getValidationResult } = useApi();
-    let pollDelay = 2000; // Start with 2 seconds
-
-    const poll = async () => {
-      try {
-        const status = await getTaskStatus(taskId);
-        currentStatus.value = status;
-
-        // Task completed
-        if (status.status === 'completed') {
-          const result = await getValidationResult(taskId);
-          currentResult.value = result;
-          addToHistory(taskId, filename, 'completed', result);
-          pageState.value = 'completed';
-          return; // Stop polling
-        }
-
-        // Task failed - capture error_code
-        if (['failed', 'failed_permanently'].includes(status.status)) {
-          pageState.value = 'error';
-          errorCode.value = status.error_code;
-          errorMessage.value = status.error_code ? undefined : '任务处理失败';
-          addToHistory(taskId, filename, status.status, undefined, status.error_code);
-          return; // Stop polling
-        }
-
-        // Still processing - continue polling with exponential backoff (max 30s)
-        pollDelay = Math.min(pollDelay * 1.5, 30000);
-        pollingInterval = setTimeout(poll, pollDelay);
-      } catch (e) {
-        console.error('Polling error:', e);
-        // Retry on error with same delay
-        pollingInterval = setTimeout(poll, pollDelay);
-      }
-    };
-
-    // Start first poll
-    pollingInterval = setTimeout(poll, pollDelay);
   }
 
   // Stop polling
   function stopPolling() {
-    if (pollingInterval) {
-      clearTimeout(pollingInterval);
-      pollingInterval = null;
-    }
+    disconnectSSE();
   }
 
   // Reset state

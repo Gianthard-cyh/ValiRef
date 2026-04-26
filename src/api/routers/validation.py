@@ -1,6 +1,8 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Request
+from fastapi.responses import StreamingResponse
 from uuid import uuid4
 import json
+import asyncio
 
 from ..schemas.api import (
     PDFValidationResponse,
@@ -131,4 +133,63 @@ async def get_stats(request: Request):
     return QueueStatsResponse(
         total=sum(stats.values()),
         by_status=stats,
+    )
+
+
+@router.get("/stream/{task_id}")
+async def stream_task_status(task_id: str, request: Request):
+    """SSE endpoint for real-time task progress updates."""
+    sse_manager = request.app.state.sse_manager
+    task_store = request.app.state.task_store
+
+    # Verify task exists
+    task = await task_store.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    # Register SSE connection
+    queue = await sse_manager.connect(task_id)
+
+    async def event_generator():
+        try:
+            # Send initial state
+            initial_data = {
+                "task_id": task_id,
+                "stage": task.get("stage", "extraction"),
+                "processed": task.get("progress_processed", 0),
+                "total": task.get("progress_total", 0),
+                "current_title": task.get("current_title"),
+                "status": task.get("status", "pending"),
+            }
+            yield f"data: {json.dumps(initial_data)}\n\n"
+
+            # Listen for updates
+            while True:
+                if await request.is_disconnected():
+                    break
+
+                try:
+                    # Wait for message from MQ with timeout
+                    data = await asyncio.wait_for(queue.get(), timeout=30)
+                    yield f"data: {json.dumps(data)}\n\n"
+
+                    # Stop if task is complete or failed
+                    if data.get("status") in ["completed", "failed", "failed_permanently"]:
+                        break
+                except asyncio.TimeoutError:
+                    # Send heartbeat to keep connection alive
+                    yield ": heartbeat\n\n"
+        except Exception as e:
+            logger = get_logger(__name__)
+            logger.error("SSE error", task_id=task_id, error=str(e))
+        finally:
+            await sse_manager.disconnect(task_id, queue)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        },
     )

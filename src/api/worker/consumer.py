@@ -109,7 +109,7 @@ class PDFValidationWorker:
 
                     # Create progress callback for this task
                     progress_callback = WorkerProgressCallback(
-                        self.task_store, task_id
+                        self.task_store, task_id, self.queue
                     )
 
                     # Create pipeline with progress callback

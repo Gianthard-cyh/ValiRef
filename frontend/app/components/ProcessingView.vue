@@ -98,11 +98,6 @@
           {{ currentTitle }}
         </p>
       </div>
-
-      <!-- Stats -->
-      <p v-if="speed > 0" class="mt-4 text-caption text-text-muted dark:text-text-dark-tertiary">
-        {{ speed }} 个/分钟
-      </p>
     </div>
   </div>
 </template>
@@ -154,27 +149,6 @@ const extractedCount = computed(() => {
   // During extraction, show total references found so far
   // During validation, show total references
   return status.progress?.total || 0;
-});
-
-// Calculate validation speed (references per minute)
-const speed = computed(() => {
-  const status = currentStatus.value;
-  if (!status?.progress || status.progress.processed < 5) return 0;
-
-  const processed = status.progress.processed;
-  const total = status.progress.total;
-  const progressRatio = processed / total;
-
-  // Estimate based on progress ratio and typical processing time
-  // Extraction takes ~20% of time, validation ~80%
-  const elapsedMinutes = (Date.now() - new Date(status.created_at).getTime()) / 60000;
-  if (elapsedMinutes < 0.5) return 0;
-
-  // Only show speed during validation stage
-  if (status.stage !== 'validation') return 0;
-
-  const refsPerMinute = Math.round(processed / elapsedMinutes);
-  return refsPerMinute > 0 ? refsPerMinute : 0;
 });
 </script>
 

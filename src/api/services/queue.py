@@ -60,6 +60,12 @@ class MessageQueue:
             }
         )
 
+        # Progress updates queue: for real-time SSE updates
+        self.progress_queue = await self.channel.declare_queue(
+            "progress_updates",
+            durable=False,  # No need to persist, just for real-time updates
+        )
+
     async def publish_pdf_task(self, task_id: str, filename: str, pdf_path: str, search_mode: str = "local", retry_count: int = 0):
         """Publish task to main queue."""
         message = {
@@ -97,6 +103,25 @@ class MessageQueue:
                 delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
             ),
             routing_key=RABBITMQ_DLQ_NAME,
+        )
+
+    async def publish_progress_update(self, task_id: str, stage: str, processed: int, total: int, current_title: str | None, status: str = "processing"):
+        """Publish progress update for SSE streaming."""
+        message = {
+            "task_id": task_id,
+            "stage": stage,
+            "processed": processed,
+            "total": total,
+            "current_title": current_title,
+            "status": status,
+            "timestamp": datetime.now().isoformat(),
+        }
+        await self.channel.default_exchange.publish(
+            aio_pika.Message(
+                body=json.dumps(message).encode(),
+                content_type="application/json",
+            ),
+            routing_key="progress_updates",
         )
 
     async def consume(self, callback: Callable):
