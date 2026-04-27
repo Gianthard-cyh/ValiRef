@@ -2,6 +2,7 @@
 
 import pytest
 import json
+import asyncio
 from pathlib import Path
 from unittest.mock import Mock, patch, AsyncMock, MagicMock
 from datetime import datetime
@@ -490,10 +491,8 @@ class TestPDFValidationWorker:
         from src.api.worker.consumer import PDFValidationWorker
         worker = PDFValidationWorker()
         worker.task_store = AsyncMock()
-        worker.task_store.get_task = AsyncMock(return_value={"retry_count": 0})
         worker.queue = AsyncMock()
-        worker.extractor = AsyncMock()
-        worker.detector = AsyncMock()
+        worker.pipeline = AsyncMock()
         return worker
 
     @pytest.mark.asyncio
@@ -508,15 +507,7 @@ class TestPDFValidationWorker:
             "retry_count": 0
         }).encode()
 
-        # Create async context manager mock for message.process()
-        mock_process_cm = MagicMock()
-        mock_process_cm.__aenter__ = AsyncMock(return_value=None)
-        mock_process_cm.__aexit__ = AsyncMock(return_value=None)
-        mock_message.process.return_value = mock_process_cm
-
-        # Mock ValidationPipeline class
-        mock_pipeline_instance = AsyncMock()
-        mock_pipeline_instance.process_pdf.return_value = {
+        mock_worker.pipeline.process_pdf.return_value = {
             "references_count": 2,
             "validated_count": 2,
             "duration_seconds": 10.5,
@@ -532,8 +523,13 @@ class TestPDFValidationWorker:
             ]
         }
 
-        with patch("src.api.worker.consumer.ValidationPipeline", return_value=mock_pipeline_instance):
-            await mock_worker.process_message(mock_message)
+        # Create async context manager mock for message.process()
+        mock_process_cm = MagicMock()
+        mock_process_cm.__aenter__ = AsyncMock(return_value=None)
+        mock_process_cm.__aexit__ = AsyncMock(return_value=None)
+        mock_message.process.return_value = mock_process_cm
+
+        await mock_worker.process_message(mock_message)
 
         mock_worker.task_store.update_status.assert_called()
         # Verify the completed status update was called with results
@@ -546,37 +542,31 @@ class TestPDFValidationWorker:
         assert args[1] == "completed"
 
     @pytest.mark.asyncio
-    async def test_worker_under_max_retries_sends_to_retry(self, mock_worker):
-        """测试Worker在重试次数内让RabbitMQ自动重试（不抛出异常到consumer）"""
+    async def test_worker_under_max_retries_raises_for_retry(self, mock_worker):
+        """测试Worker在重试次数内抛出异常，让RabbitMQ自动重试"""
         mock_message = MagicMock()
         mock_message.body = json.dumps({
             "task_id": "task-002",
             "filename": "test.pdf",
             "pdf_path": "/tmp/test.pdf",
             "search_mode": "local",
+            "retry_count": 0  # 未达到最大重试次数
         }).encode()
 
-        # Mock get_task to return retry_count=0 (under max)
-        mock_worker.task_store.get_task = AsyncMock(return_value={"retry_count": 0})
+        # Simulate pipeline failure
+        mock_worker.pipeline.process_pdf.side_effect = Exception("Processing error")
 
         mock_process_cm = MagicMock()
         mock_process_cm.__aenter__ = AsyncMock(return_value=None)
         mock_process_cm.__aexit__ = AsyncMock(return_value=None)
         mock_message.process.return_value = mock_process_cm
 
-        # Mock ValidationPipeline class to simulate failure
-        mock_pipeline_instance = AsyncMock()
-        mock_pipeline_instance.process_pdf.side_effect = Exception("Processing error")
-
-        with patch("src.api.worker.consumer.ValidationPipeline", return_value=mock_pipeline_instance):
-            # process_message should NOT raise - exception is swallowed by outer try-except
-            # after message.process() rejects it to DLX for retry
+        # process_message raises exception to trigger RabbitMQ retry via DLX
+        with pytest.raises(Exception, match="Processing error"):
             await mock_worker.process_message(mock_message)
 
         # Should update task status to processing then fail
         mock_worker.task_store.update_status.assert_called()
-        # Should increment retry count
-        mock_worker.task_store.increment_retry.assert_called_once()
         # Should NOT publish to DLQ (will be retried via RabbitMQ DLX)
         mock_worker.queue.publish_to_dlq.assert_not_called()
 
@@ -589,23 +579,18 @@ class TestPDFValidationWorker:
             "filename": "test.pdf",
             "pdf_path": "/tmp/test.pdf",
             "search_mode": "local",
+            "retry_count": 3  # 已达到最大重试次数
         }).encode()
 
-        # Mock get_task to return retry_count=3 (at max)
-        mock_worker.task_store.get_task = AsyncMock(return_value={"retry_count": 3})
+        mock_worker.pipeline.process_pdf.side_effect = Exception("Processing error")
 
         mock_process_cm = MagicMock()
         mock_process_cm.__aenter__ = AsyncMock(return_value=None)
         mock_process_cm.__aexit__ = AsyncMock(return_value=None)
         mock_message.process.return_value = mock_process_cm
 
-        # Mock ValidationPipeline class to simulate failure
-        mock_pipeline_instance = AsyncMock()
-        mock_pipeline_instance.process_pdf.side_effect = Exception("Processing error")
-
-        with patch("src.api.worker.consumer.ValidationPipeline", return_value=mock_pipeline_instance):
-            # process_message should NOT raise - it handles the failure by sending to DLQ
-            await mock_worker.process_message(mock_message)
+        # process_message should NOT raise - it handles the failure by sending to DLQ
+        await mock_worker.process_message(mock_message)
 
         # Should mark as failed_permanently
         calls = mock_worker.task_store.update_status.call_args_list
@@ -615,8 +600,6 @@ class TestPDFValidationWorker:
 
         # Should publish to DLQ
         mock_worker.queue.publish_to_dlq.assert_called_once()
-        # Should NOT increment retry (already at max)
-        mock_worker.task_store.increment_retry.assert_not_called()
 
 
 class TestHealthEndpoint:
