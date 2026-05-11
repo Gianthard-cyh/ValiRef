@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional, Callable
+from typing import List, Optional, Callable, Dict, Tuple, Match
+import re
 import fitz  # pymupdf
 from langchain_deepseek import ChatDeepSeek
 from langchain_core.prompts import ChatPromptTemplate
@@ -15,6 +16,7 @@ from .config import (
     EXTRACTION_CHAR_LIMIT,
 )
 from .exceptions import ExtractionError, ErrorCode
+from .logger import logger
 
 """
 Extract structured information from the input
@@ -42,6 +44,18 @@ class Extractor(ABC):
 
 
 class TextExtractor(Extractor):
+    """Extract references and their associated claims from text."""
+
+    # Regex patterns for citation detection
+    CITATION_PATTERNS = [
+        # Digital citations: [1], [1,2], [1-3], [1, 2, 3]
+        (r'\[(\d+(?:\s*,\s*\d+)*)\]', 'numeric'),
+        (r'\[(\d+\s*-\s*\d+)\]', 'numeric_range'),
+        # Author-year: (Smith et al., 2024), (Smith, 2024), (Smith and Jones, 2024)
+        # Supports: hyphenated names (Smith-Jones), prefixes (de la Cruz), institutions (OpenAI)
+        (r'\(([^,]+?\s*,\s*\d{4})\)', 'author_year'),
+    ]
+
     def __init__(self, llm: Optional[ChatDeepSeek] = None):
         if llm is not None:
             self.model = llm
@@ -64,109 +78,446 @@ class TextExtractor(Extractor):
         on_progress: Optional[Callable[[int, List[Reference]], None]] = None,
     ) -> List[Paper]:
         """
-        Extract a list of referenced papers from a text string.
-        If on_progress is provided, streams partial results during extraction.
+        Extract references and their claims from text.
+        Phase 1: Extract references from References section
+        Phase 2: Scan main text (before References) for claims
         """
-        # Validate input text
+        self._validate_input(text)
+
+        # Preprocess: fix line breaks in citations
+        text = self._preprocess_text(text)
+
+        # Split document: main text vs references section
+        main_text, ref_section = self._split_document(text)
+
+        # Phase 1: Extract references from References section
+        papers = await self._extract_references_from_section(ref_section, on_progress)
+        if not papers:
+            return []
+
+        # Phase 2: Extract and associate claims from main text only
+        papers = self._extract_and_associate_claims(main_text, papers)
+
+        return papers
+
+    def _preprocess_text(self, text: str) -> str:
+        """
+        Preprocess text to fix common PDF extraction issues.
+        Handles citations split across lines.
+        """
+        # Pattern 1: [\n 1] -> [1] (bracket then newline then number)
+        text = re.sub(r'\[\s*\n\s*(\d+)', r'[\1', text)
+
+        # Pattern 2: [1\n ] -> [1] (number then newline then closing bracket)
+        text = re.sub(r'(\d+)\s*\n\s*\]', r'\1]', text)
+
+        # Pattern 3: [1,\n 2] -> [1, 2] (comma after number then newline)
+        text = re.sub(r'(\d+)\s*,\s*\n\s*(\d+)', r'\1, \2', text)
+
+        # Pattern 4: [1\n, 2] -> [1, 2] (number then newline then comma)
+        text = re.sub(r'(\d+)\s*\n\s*,', r'\1,', text)
+
+        # Pattern 5: [1-\n 3] -> [1-3] (range with newline after dash)
+        text = re.sub(r'(\d+)\s*-\s*\n\s*(\d+)', r'\1-\2', text)
+
+        # Pattern 6: Multi-line citation with brackets on separate lines
+        # [\n 1, 2, 3 \n] -> [1, 2, 3]
+        text = re.sub(r'\[\s*\n\s*((?:\d+\s*,?\s*)+)\n\s*\]', r'[\1]', text)
+
+        # Pattern 7: Remove newlines within citation brackets (after other fixes)
+        # Replace newlines within brackets with space
+        def fix_newlines_in_citation(match):
+            content = match.group(1)
+            # Remove all whitespace including newlines, then normalize
+            content = re.sub(r'\s+', ' ', content)
+            return f'[{content}]'
+
+        text = re.sub(r'\[(\d[^\]]*?)\]', fix_newlines_in_citation, text)
+
+        return text
+
+    def _split_document(self, text: str) -> Tuple[str, str]:
+        """
+        Split document into main text and References section.
+        Returns: (main_text, references_section)
+        """
+        headers = ["References", "Bibliography", "REFERENCES", "BIBLIOGRAPHY"]
+        ref_pos = -1
+
+        for header in headers:
+            # Search from middle to end to find the actual References section
+            search_start = len(text) // 2
+            pos = text.rfind(header, search_start)
+            if pos != -1 and pos > ref_pos:
+                ref_pos = pos
+
+        if ref_pos == -1:
+            # No References section found - treat all as references (fallback)
+            # For short texts, return empty main_text and full text as ref_section
+            if len(text) <= EXTRACTION_CHAR_LIMIT:
+                return "", text
+            # For long texts, split at EXTRACTION_CHAR_LIMIT from end
+            return text[:-EXTRACTION_CHAR_LIMIT], text[-EXTRACTION_CHAR_LIMIT:]
+
+        # Split at References header
+        main_text = text[:ref_pos].strip()
+        ref_section = text[ref_pos:ref_pos + EXTRACTION_CHAR_LIMIT]
+
+        return main_text, ref_section
+
+    def _validate_input(self, text: str) -> None:
+        """Validate input text meets minimum requirements."""
         if not text or not text.strip():
             raise ExtractionError(
                 message="PDF contains no text content (possibly a scanned image PDF)",
                 error_code=ErrorCode.PDF_NO_TEXT,
             )
 
-        stripped_text = text.strip()
-        if len(stripped_text) < 500:
+        stripped = text.strip()
+        if len(stripped) < 500:
             raise ExtractionError(
-                message=f"PDF text too short ({len(stripped_text)} chars), cannot extract references",
+                message=f"PDF text too short ({len(stripped)} chars), cannot extract references",
                 error_code=ErrorCode.PDF_TOO_SHORT,
             )
 
+    async def _extract_references_from_section(
+        self,
+        ref_section: str,
+        on_progress: Optional[Callable[[int, List[Reference]], None]] = None,
+    ) -> List[Paper]:
+        """Extract reference list from References section text."""
+        # Use LLM to extract structured references
         prompt = ChatPromptTemplate.from_template(
             "You are an expert researcher. Extract a list of referenced/cited research papers from the following text segment.\n"
             "The text is the END of a research paper, containing the References/Bibliography section.\n"
             "Extract as many references as possible into the ReferenceList schema.\n"
-            "For each reference, extract Title, Authors, Date, ArXiv ID (if present), and Venue/Journal (e.g., 'NeurIPS', 'ICLR', 'Nature').\n"
-            "If a field is missing, infer or use 'N/A'.\n"
+            "\n"
+            "CRITICAL - Author Format Rules:\n"
+            "- For each author, use format 'LastName, FirstName' (e.g., 'Smith, John')\n"
+            "- Do NOT use 'FirstName LastName' format\n"
+            "- Do NOT include titles like 'Dr.' or 'Prof.'\n"
+            "- For institutions like 'OpenAI', use as-is\n"
+            "- For names with particles like 'de la Cruz', include the full particle\n"
+            "\n"
+            "Fields to extract:\n"
+            "- Title: Paper title\n"
+            "- Authors: List of authors in 'LastName, FirstName' format\n"
+            "- Date: Publication year\n"
+            "- ArXiv ID: If present (e.g., '2401.12345')\n"
+            "- Venue: Conference or journal name (e.g., 'NeurIPS', 'ICLR', 'Nature')\n"
+            "\n"
+            "If a field is missing, use 'N/A'.\n"
             "\n"
             "Text Segment:\n{text}"
         )
 
-        # Smart truncation: Look for "References" or "Bibliography"
-        truncated_text = text[-EXTRACTION_CHAR_LIMIT:]  # Default fallback
-
-        # Search from the end backwards to find the last occurrence (usually the section header)
-        # Check common headers
-        headers = ["References", "Bibliography", "REFERENCES", "BIBLIOGRAPHY"]
-        found_pos = -1
-
-        for header in headers:
-            # Search in the last 50% of text to avoid finding it in Table of Contents or Intro
-            search_start = len(text) // 2
-            pos = text.rfind(header, search_start)
-            if pos != -1:
-                if found_pos == -1 or pos > found_pos:
-                    found_pos = pos
-
-        if found_pos != -1:
-            # Take from the header to the end
-            # Also include a bit of context before just in case
-            start_pos = max(0, found_pos)
-            truncated_text = text[start_pos:]
-
-            # If the resulting text is still too long, truncate it
-            if len(truncated_text) > EXTRACTION_CHAR_LIMIT:
-                truncated_text = truncated_text[:EXTRACTION_CHAR_LIMIT]
-        else:
-            # Fallback to last N chars
-            truncated_text = text[-EXTRACTION_CHAR_LIMIT:]
-
         structured_llm = self.model.with_structured_output(ReferenceList)
         chain = prompt | structured_llm
 
-        # Use streaming if progress callback is provided
+        # Use streaming if progress callback provided
         if on_progress:
-            last_count = 0
-            result: Optional[ReferenceList] = None
-
-            async for partial in chain.astream({"text": truncated_text}):
-                result = partial
-                if partial.references and len(partial.references) > last_count:
-                    new_count = len(partial.references)
-                    new_refs = partial.references[last_count:new_count]
-                    on_progress(new_count, new_refs)
-                    last_count = new_count
+            result = await self._extract_with_progress(chain, ref_section, on_progress)
         else:
-            result = await chain.ainvoke({"text": truncated_text})
+            result = await chain.ainvoke({"text": ref_section})
 
-        if result is None:
+        if result is None or not result.references:
             raise ExtractionError(
-                message="LLM extraction returned None. The references might be outside the truncated text window.",
-                error_code=ErrorCode.EXTRACTION_FAILED,
-            )
-
-        if not result.references:
-            raise ExtractionError(
-                message="No references found in the PDF. The document might not contain a references section, or it might be in an unsupported format.",
+                message="No references found in the PDF.",
                 error_code=ErrorCode.NO_REFERENCES_FOUND,
             )
 
+        return self._convert_to_papers(result.references)
+
+    async def _extract_with_progress(
+        self,
+        chain,
+        text: str,
+        on_progress: Callable[[int, List[Reference]], None],
+    ) -> Optional[ReferenceList]:
+        """Extract references with progress streaming."""
+        last_count = 0
+        result: Optional[ReferenceList] = None
+
+        async for partial in chain.astream({"text": text}):
+            result = partial
+            if partial.references and len(partial.references) > last_count:
+                new_count = len(partial.references)
+                new_refs = partial.references[last_count:new_count]
+                on_progress(new_count, new_refs)
+                last_count = new_count
+
+        return result
+
+    def _convert_to_papers(self, references: List[Reference]) -> List[Paper]:
+        """Convert Reference objects to Paper objects with validation."""
         papers = []
-        for ref in result.references:
-            # Convert Reference to Paper
+        for idx, ref in enumerate(references, start=1):
+            # Validate author format
+            validated_authors = self._validate_and_normalize_authors(ref.authors, idx, ref.title)
+
             paper = Paper(
                 source="reference",
-                id=ref.arxiv_id if ref.arxiv_id else "N/A",
+                id=ref.arxiv_id if ref.arxiv_id else f"ref_{idx}",
                 title=ref.title,
                 abstract="N/A",
-                authors=ref.authors,
+                authors=validated_authors,
                 published_date=ref.date,
                 url=f"https://arxiv.org/abs/{ref.arxiv_id}" if ref.arxiv_id else "N/A",
                 pdf_url=f"https://arxiv.org/pdf/{ref.arxiv_id}.pdf" if ref.arxiv_id else None,
                 venue=ref.venue,
+                claims=[],  # Will be populated in Phase 2
             )
             papers.append(paper)
+        return papers
+
+    def _validate_and_normalize_authors(self, authors: List[str], ref_idx: int, ref_title: str) -> List[str]:
+        """
+        Validate author format and normalize if possible.
+        Expected format: 'LastName, FirstName' or institution name (no comma needed).
+        """
+        validated = []
+        titles = {'dr.', 'prof.', 'professor', 'mr.', 'mrs.', 'ms.'}
+
+        for author in authors:
+            author = author.strip()
+            if not author or author.lower() == 'n/a':
+                continue
+
+            # Check for titles
+            lower = author.lower()
+            has_title = any(lower.startswith(t) or f' {t} ' in lower or lower.endswith(t) for t in titles)
+            if has_title:
+                logger.warning(
+                    "Author contains academic title",
+                    reference_index=ref_idx,
+                    title=ref_title[:50],
+                    author=author,
+                    expected_format="LastName, FirstName (no titles)",
+                )
+
+            # Check format: should have comma for personal names
+            # Institution names (OpenAI, Google DeepMind) don't need comma
+            # Heuristics to distinguish personal names from institutions:
+            # - Personal names: 1-2 words, often with initials (A.)
+            # - Institutions: 3+ words OR single word with mixed case like OpenAI
+            has_comma = ',' in author
+            has_punctuation = any(c in author for c in '.')
+            words = [w for w in author.split() if w]
+
+            # Institution heuristics
+            has_mixed_case = any(
+                w[0].isupper() and any(c.islower() for c in w[1:])
+                for w in words
+            ) if words else False
+
+            is_likely_institution = (
+                len(words) >= 3 or  # 3+ words: likely institution
+                (len(words) == 1 and len(words[0]) > 4 and has_mixed_case)  # e.g., OpenAI, Anthropic
+            ) and not has_punctuation
+
+            if not has_comma and not is_likely_institution:
+                # Likely a personal name without proper format
+                logger.warning(
+                    "Author format may be incorrect",
+                    reference_index=ref_idx,
+                    title=ref_title[:50],
+                    author=author,
+                    expected_format="LastName, FirstName (e.g., 'Smith, John')",
+                )
+                # Try to normalize: if it's "John Smith", convert to "Smith, John"
+                parts = author.split()
+                if len(parts) >= 2:
+                    # Assume last word is surname: "John A. Smith" -> "Smith, John A."
+                    normalized = f"{parts[-1]}, {' '.join(parts[:-1])}"
+                    logger.info(
+                        "Normalized author format",
+                        reference_index=ref_idx,
+                        original=author,
+                        normalized=normalized,
+                    )
+                    validated.append(normalized)
+                else:
+                    validated.append(author)
+            else:
+                validated.append(author)
+
+        return validated if validated else authors
+
+    def _extract_and_associate_claims(
+        self,
+        text: str,
+        papers: List[Paper],
+    ) -> List[Paper]:
+        """Extract claims from full text and associate with papers."""
+        # Build mapping: numeric index -> paper
+        numeric_map = {str(i + 1): paper for i, paper in enumerate(papers)}
+
+        # Build mapping: (author_key, year) -> papers (for author-year citations)
+        author_year_map: Dict[Tuple[str, str], List[Paper]] = {}
+        for paper in papers:
+            year = self._extract_year(paper.published_date)
+            if year and paper.authors:
+                # Create key from first author last name
+                first_author = self._normalize_author(paper.authors[0])
+                if first_author:
+                    key = (first_author, year)
+                    if key not in author_year_map:
+                        author_year_map[key] = []
+                    author_year_map[key].append(paper)
+
+        # Split text into sentences for context extraction
+        sentences = self._split_into_sentences(text)
+
+        # Scan for citations
+        for i, sentence in enumerate(sentences):
+            citations = self._find_citations_in_sentence(sentence)
+            if not citations:
+                continue
+
+            # Build claim with context
+            claim = self._build_claim(i, sentences)
+
+            # Associate with papers
+            self._associate_citations_to_papers(
+                citations, claim, numeric_map, author_year_map, papers
+            )
 
         return papers
+
+    def _extract_year(self, date_str: str) -> Optional[str]:
+        """Extract 4-digit year from date string."""
+        match = re.search(r'(\d{4})', date_str)
+        return match.group(1) if match else None
+
+    def _normalize_author(self, author: str) -> Optional[str]:
+        """Extract last name from author string."""
+        # Handle formats: "John Smith", "Smith, John", "Smith"
+        author = author.strip()
+        if ',' in author:
+            return author.split(',')[0].strip().lower()
+        parts = author.split()
+        return parts[-1].lower() if parts else None
+
+    def _split_into_sentences(self, text: str) -> List[str]:
+        """Split text into sentences."""
+        # Simple sentence splitting (can be improved)
+        sentences = re.split(r'(?<=[.!?])\s+', text)
+        return [s.strip() for s in sentences if s.strip()]
+
+    def _find_citations_in_sentence(self, sentence: str) -> List[Dict]:
+        """Find all citations in a sentence."""
+        citations = []
+
+        for pattern, cit_type in self.CITATION_PATTERNS:
+            for match in re.finditer(pattern, sentence):
+                citations.append({
+                    'type': cit_type,
+                    'match': match,
+                    'text': match.group(0),
+                })
+
+        return citations
+
+    def _build_claim(self, sentence_idx: int, sentences: List[str]) -> str:
+        """Build claim text with context (current + previous sentence)."""
+        parts = []
+
+        # Previous sentence if exists
+        if sentence_idx > 0:
+            parts.append(sentences[sentence_idx - 1])
+
+        # Current sentence with citation
+        parts.append(sentences[sentence_idx])
+
+        return ' '.join(parts)
+
+    def _associate_citations_to_papers(
+        self,
+        citations: List[Dict],
+        claim: str,
+        numeric_map: Dict[str, Paper],
+        author_year_map: Dict[Tuple[str, str], List[Paper]],
+        all_papers: List[Paper],
+    ) -> None:
+        """Associate citations to papers."""
+        for citation in citations:
+            cit_type = citation['type']
+
+            if cit_type in ('numeric', 'numeric_range'):
+                # Parse numeric citations: [1,2,3] or [1-3]
+                nums = self._parse_numeric_citation(citation['text'])
+                for num in nums:
+                    if num in numeric_map:
+                        numeric_map[num].claims.append(claim)
+
+            elif cit_type == 'author_year':
+                # Parse author-year: (Smith et al., 2024)
+                parsed = self._parse_author_year_citation(citation['text'])
+                if parsed:
+                    key = (parsed['author'], parsed['year'])
+                    if key in author_year_map:
+                        papers = author_year_map[key]
+                        if len(papers) == 1:
+                            papers[0].claims.append(claim)
+                        else:
+                            # Ambiguous: add to all candidates
+                            for paper in papers:
+                                paper.claims.append(claim)
+
+    def _parse_numeric_citation(self, citation_text: str) -> List[str]:
+        """Parse numeric citation like [1,2,3] or [1-3] into list of numbers."""
+        nums = []
+        content = citation_text.strip('[]()')
+
+        # Handle ranges: 1-3
+        if '-' in content:
+            try:
+                start, end = map(int, content.split('-'))
+                nums.extend(str(i) for i in range(start, end + 1))
+            except ValueError:
+                pass
+        else:
+            # Handle comma-separated: 1,2,3
+            for part in content.split(','):
+                part = part.strip()
+                if part.isdigit():
+                    nums.append(part)
+
+        return nums
+
+    def _parse_author_year_citation(self, citation_text: str) -> Optional[Dict]:
+        """Parse author-year citation like (Smith et al., 2024) or (de la Cruz, 2024)."""
+        content = citation_text.strip('()')
+        # Split on comma, but only the last comma (year separator)
+        parts = content.rsplit(',', 1)
+
+        if len(parts) == 2:
+            author_part = parts[0].strip()
+            year = parts[1].strip()
+
+            # Extract first author surname (handle "et al.", "and", prefixes)
+            # Examples: "Smith et al.", "Smith and Jones", "de la Cruz", "OpenAI"
+            author_key = self._extract_first_author_key(author_part)
+
+            if author_key:
+                return {'author': author_key, 'year': year}
+
+        return None
+
+    def _extract_first_author_key(self, author_str: str) -> Optional[str]:
+        """Extract first author surname from author-year citation."""
+        # Remove "et al."
+        author_str = re.sub(r'\s+et\s+al\.?', '', author_str, flags=re.IGNORECASE)
+
+        # Split by "and" for multiple authors
+        parts = re.split(r'\s+and\s+', author_str, flags=re.IGNORECASE)
+        first_author = parts[0].strip()
+
+        if not first_author:
+            return None
+
+        # Normalize to lowercase for matching
+        return first_author.lower()
 
     async def extract_batch(self, texts: List[str]) -> List[List[Paper]]:
         """Extract lists of referenced papers from a batch of text strings."""

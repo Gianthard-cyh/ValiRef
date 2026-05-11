@@ -80,10 +80,12 @@ class TestTextExtractor:
             return_value=MagicMock(__or__=MagicMock(return_value=mock_chain)),
         ):
             with pytest.raises(ExtractionError) as exc_info:
-                await extractor.extract("A" * 1000)  # Valid length text
+                # Use text that will trigger reference extraction
+                await extractor.extract("A" * 1000 + "\nReferences\n[1] Test")  # Valid length with refs section
 
-        assert exc_info.value.error_code == ErrorCode.EXTRACTION_FAILED
-        assert "None" in exc_info.value.message
+        # Now returns NO_REFERENCES_FOUND when result is None
+        assert exc_info.value.error_code == ErrorCode.NO_REFERENCES_FOUND
+        assert "references" in exc_info.value.message.lower()
 
     @pytest.mark.asyncio
     async def test_extract_empty_references_raises_no_references_found(self):
@@ -120,7 +122,7 @@ class TestTextExtractor:
         mock_result.references = [
             MagicMock(
                 title="Test Paper",
-                authors=["Author One", "Author Two"],
+                authors=["One, Author", "Two, Author"],  # Now expects LastName, FirstName format
                 date="2023",
                 arxiv_id="2301.12345",
                 venue="ICLR",
@@ -147,13 +149,13 @@ class TestTextExtractor:
             extractor = TextExtractor(llm=mock_llm)
 
             # Execute with long enough text
-            text = "References\n1. Test Paper by Author One, Author Two (2023)" + "A" * 500
+            text = "References\n1. Test Paper by One, Author, Two, Author (2023)" + "A" * 500
             papers = await extractor.extract(text)
 
-            # Verify
+            # Verify - authors should be in LastName, FirstName format
             assert len(papers) == 1
             assert papers[0].title == "Test Paper"
-            assert papers[0].authors == ["Author One", "Author Two"]
+            assert papers[0].authors == ["One, Author", "Two, Author"]
             assert papers[0].id == "2301.12345"
 
     @pytest.mark.asyncio
