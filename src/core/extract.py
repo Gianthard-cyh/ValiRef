@@ -104,16 +104,16 @@ class TextExtractor(Extractor):
         # Preprocess: fix line breaks in citations
         text = self._preprocess_text(text)
 
-        # Split document: main text vs references section
-        main_text, ref_section = self._split_document(text)
+        # Split document: body vs references
+        body, refs = self._split_document(text)
 
         # Phase 1: Extract references from References section
-        papers = await self._extract_references_from_section(ref_section, on_progress)
+        papers = await self._extract_references_from_section(refs, on_progress)
         if not papers:
             return []
 
-        # Phase 2: Extract and associate claims from main text only
-        papers = self._extract_and_associate_claims(main_text, papers)
+        # Phase 2: Extract and associate claims from body only
+        papers = self._extract_and_associate_claims(body, papers)
 
         return papers
 
@@ -130,10 +130,7 @@ class TextExtractor(Extractor):
         return self._MULTILINE_CITATION.sub(fix_citation, text)
 
     def _split_document(self, text: str) -> Tuple[str, str]:
-        """
-        Split document into main text and References section.
-        Returns: (main_text, references_section)
-        """
+        """Split document into body and references section."""
         headers = ["References", "Bibliography", "REFERENCES", "BIBLIOGRAPHY"]
         ref_pos = -1
 
@@ -146,17 +143,12 @@ class TextExtractor(Extractor):
 
         if ref_pos == -1:
             # No References section found - treat all as references (fallback)
-            # For short texts, return empty main_text and full text as ref_section
             if len(text) <= EXTRACTION_CHAR_LIMIT:
                 return "", text
-            # For long texts, split at EXTRACTION_CHAR_LIMIT from end
             return text[:-EXTRACTION_CHAR_LIMIT], text[-EXTRACTION_CHAR_LIMIT:]
 
         # Split at References header
-        main_text = text[:ref_pos].strip()
-        ref_section = text[ref_pos:ref_pos + EXTRACTION_CHAR_LIMIT]
-
-        return main_text, ref_section
+        return text[:ref_pos].strip(), text[ref_pos:ref_pos + EXTRACTION_CHAR_LIMIT]
 
     def _validate_input(self, text: str) -> None:
         """Validate input text meets minimum requirements."""
@@ -175,11 +167,10 @@ class TextExtractor(Extractor):
 
     async def _extract_references_from_section(
         self,
-        ref_section: str,
+        refs: str,
         on_progress: Optional[Callable[[int, List[Reference]], None]] = None,
     ) -> List[Paper]:
         """Extract reference list from References section text."""
-        # Use LLM to extract structured references
         prompt = ChatPromptTemplate.from_template(
             "You are an expert researcher. Extract a list of referenced/cited research papers from the following text segment.\n"
             "The text is the END of a research paper, containing the References/Bibliography section.\n"
@@ -207,11 +198,10 @@ class TextExtractor(Extractor):
         structured_llm = self.model.with_structured_output(ReferenceList)
         chain = prompt | structured_llm
 
-        # Use streaming if progress callback provided
         if on_progress:
-            result = await self._extract_with_progress(chain, ref_section, on_progress)
+            result = await self._extract_with_progress(chain, refs, on_progress)
         else:
-            result = await chain.ainvoke({"text": ref_section})
+            result = await chain.ainvoke({"text": refs})
 
         if result is None or not result.references:
             raise ExtractionError(
@@ -263,11 +253,8 @@ class TextExtractor(Extractor):
             papers.append(paper)
         return papers
 
-    def _validate_and_normalize_authors(self, authors: List[str], ref_idx: int, ref_title: str) -> List[str]:
-        """
-        Validate author format and normalize if possible.
-        Expected format: 'LastName, FirstName' or institution name (no comma needed).
-        """
+    def _validate_and_normalize_authors(self, authors: List[str], idx: int, title: str) -> List[str]:
+        """Validate author format and normalize if possible."""
         validated = []
         titles = {'dr.', 'prof.', 'professor', 'mr.', 'mrs.', 'ms.'}
 
@@ -276,55 +263,45 @@ class TextExtractor(Extractor):
             if not author or author.lower() == 'n/a':
                 continue
 
-            # Check for titles
             lower = author.lower()
             has_title = any(lower.startswith(t) or f' {t} ' in lower or lower.endswith(t) for t in titles)
             if has_title:
                 logger.warning(
                     "Author contains academic title",
-                    reference_index=ref_idx,
-                    title=ref_title[:50],
+                    reference_index=idx,
+                    title=title[:50],
                     author=author,
                     expected_format="LastName, FirstName (no titles)",
                 )
 
-            # Check format: should have comma for personal names
-            # Institution names (OpenAI, Google DeepMind) don't need comma
-            # Heuristics to distinguish personal names from institutions:
-            # - Personal names: 1-2 words, often with initials (A.)
-            # - Institutions: 3+ words OR single word with mixed case like OpenAI
             has_comma = ',' in author
-            has_punctuation = any(c in author for c in '.')
+            has_punct = any(c in author for c in '.')
             words = [w for w in author.split() if w]
 
-            # Institution heuristics
-            has_mixed_case = any(
+            has_mixed = any(
                 w[0].isupper() and any(c.islower() for c in w[1:])
                 for w in words
             ) if words else False
 
-            is_likely_institution = (
-                len(words) >= 3 or  # 3+ words: likely institution
-                (len(words) == 1 and len(words[0]) > 4 and has_mixed_case)  # e.g., OpenAI, Anthropic
-            ) and not has_punctuation
+            is_institution = (
+                len(words) >= 3 or
+                (len(words) == 1 and len(words[0]) > 4 and has_mixed)
+            ) and not has_punct
 
-            if not has_comma and not is_likely_institution:
-                # Likely a personal name without proper format
+            if not has_comma and not is_institution:
                 logger.warning(
                     "Author format may be incorrect",
-                    reference_index=ref_idx,
-                    title=ref_title[:50],
+                    reference_index=idx,
+                    title=title[:50],
                     author=author,
                     expected_format="LastName, FirstName (e.g., 'Smith, John')",
                 )
-                # Try to normalize: if it's "John Smith", convert to "Smith, John"
                 parts = author.split()
                 if len(parts) >= 2:
-                    # Assume last word is surname: "John A. Smith" -> "Smith, John A."
                     normalized = f"{parts[-1]}, {' '.join(parts[:-1])}"
                     logger.info(
                         "Normalized author format",
-                        reference_index=ref_idx,
+                        reference_index=idx,
                         original=author,
                         normalized=normalized,
                     )
@@ -342,21 +319,20 @@ class TextExtractor(Extractor):
         papers: List[Paper],
     ) -> List[Paper]:
         """Extract claims from full text and associate with papers."""
-        # Build mapping: numeric index -> paper
-        numeric_map = {str(i + 1): paper for i, paper in enumerate(papers)}
+        # Build index: numeric citation -> paper
+        index = {str(i + 1): paper for i, paper in enumerate(papers)}
 
-        # Build mapping: (author_key, year) -> papers (for author-year citations)
-        author_year_map: Dict[Tuple[str, str], List[Paper]] = {}
+        # Build index: (author, year) -> papers (for author-year citations)
+        author_index: Dict[Tuple[str, str], List[Paper]] = {}
         for paper in papers:
             year = self._extract_year(paper.published_date)
             if year and paper.authors:
-                # Create key from first author last name
-                first_author = self._normalize_author(paper.authors[0])
-                if first_author:
-                    key = (first_author, year)
-                    if key not in author_year_map:
-                        author_year_map[key] = []
-                    author_year_map[key].append(paper)
+                first = self._normalize_author(paper.authors[0])
+                if first:
+                    key = (first, year)
+                    if key not in author_index:
+                        author_index[key] = []
+                    author_index[key].append(paper)
 
         # Split text into sentences for context extraction
         sentences = self._split_into_sentences(text)
@@ -374,7 +350,7 @@ class TextExtractor(Extractor):
 
             # Associate with papers
             self._associate_citations_to_papers(
-                citations, claim, numeric_map, author_year_map
+                citations, claim, index, author_index
             )
 
         return papers
@@ -451,16 +427,16 @@ class TextExtractor(Extractor):
             return True
 
         # Remove citations for header detection
-        text_no_cit = self._CITATION_BRACKETS.sub('', text).strip()
+        no_cit = self._CITATION_BRACKETS.sub('', text).strip()
 
         # Check numbered header: "2 RELATED WORK", "3.1 Method"
-        if self._HEADER_NUMBERED.match(text_no_cit):
-            words = text_no_cit.split()
-            if len(words) <= 6 and len(text_no_cit) < 80:
+        if self._HEADER_NUMBERED.match(no_cit):
+            words = no_cit.split()
+            if len(words) <= 6 and len(no_cit) < 80:
                 return True
 
         # Check all-caps header: "REFERENCES", "INTRODUCTION"
-        if self._HEADER_ALL_CAPS.match(text_no_cit) and len(text_no_cit) < 50:
+        if self._HEADER_ALL_CAPS.match(no_cit) and len(no_cit) < 50:
             return True
 
         return False
@@ -469,37 +445,33 @@ class TextExtractor(Extractor):
         self,
         citations: List[Dict],
         claim: str,
-        numeric_map: Dict[str, Paper],
-        author_year_map: Dict[Tuple[str, str], List[Paper]],
+        index: Dict[str, Paper],
+        author_index: Dict[Tuple[str, str], List[Paper]],
     ) -> None:
         """Associate citations to papers with deduplication."""
-        # Track which papers already have this claim to avoid duplicates
-        papers_with_claim: Set[str] = set()
+        seen: Set[str] = set()  # Track papers that already have this claim
 
         for citation in citations:
             cit_type = citation['type']
 
             if cit_type in ('numeric', 'numeric_range'):
-                # Parse numeric citations: [1,2,3] or [1-3]
                 nums = self._parse_numeric_citation(citation['text'])
                 for num in nums:
-                    if num in numeric_map:
-                        paper = numeric_map[num]
-                        if paper.id not in papers_with_claim:
+                    if num in index:
+                        paper = index[num]
+                        if paper.id not in seen:
                             paper.claims.append(claim)
-                            papers_with_claim.add(paper.id)
+                            seen.add(paper.id)
 
             elif cit_type == 'author_year':
-                # Parse author-year: (Smith et al., 2024)
                 parsed = self._parse_author_year_citation(citation['text'])
                 if parsed:
                     key = (parsed['author'], parsed['year'])
-                    if key in author_year_map:
-                        matching_papers = author_year_map[key]
-                        for paper in matching_papers:
-                            if paper.id not in papers_with_claim:
+                    if key in author_index:
+                        for paper in author_index[key]:
+                            if paper.id not in seen:
                                 paper.claims.append(claim)
-                                papers_with_claim.add(paper.id)
+                                seen.add(paper.id)
 
     def _parse_numeric_citation(self, citation_text: str) -> List[str]:
         """Parse numeric citation like [1,2,3] or [1-3] into list of numbers."""
