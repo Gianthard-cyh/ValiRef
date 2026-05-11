@@ -374,7 +374,7 @@ class TextExtractor(Extractor):
 
             # Associate with papers
             self._associate_citations_to_papers(
-                citations, claim, numeric_map, author_year_map, papers
+                citations, claim, numeric_map, author_year_map
             )
 
         return papers
@@ -471,7 +471,6 @@ class TextExtractor(Extractor):
         claim: str,
         numeric_map: Dict[str, Paper],
         author_year_map: Dict[Tuple[str, str], List[Paper]],
-        all_papers: List[Paper],
     ) -> None:
         """Associate citations to papers with deduplication."""
         # Track which papers already have this claim to avoid duplicates
@@ -496,8 +495,8 @@ class TextExtractor(Extractor):
                 if parsed:
                     key = (parsed['author'], parsed['year'])
                     if key in author_year_map:
-                        papers = author_year_map[key]
-                        for paper in papers:
+                        matching_papers = author_year_map[key]
+                        for paper in matching_papers:
                             if paper.id not in papers_with_claim:
                                 paper.claims.append(claim)
                                 papers_with_claim.add(paper.id)
