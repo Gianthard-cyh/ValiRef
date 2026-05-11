@@ -143,11 +143,11 @@ class TestClaimBuilding:
     def test_build_claim_joins_sentences(self, extractor):
         """Build claim joins sentences with space."""
         sentences = [
-            "Previous.",
-            "Current."
+            "Previous work has shown promising results in this area.",
+            "Current approach builds on these findings with new methods [1]."
         ]
         claim = extractor._build_claim(1, sentences)
-        assert claim == "Previous. Current."
+        assert claim == "Previous work has shown promising results in this area. Current approach builds on these findings with new methods [1]."
 
 
 class TestCitationFinding:
@@ -639,7 +639,7 @@ class TestAuthorYearMatchingEdgeCases:
                 claims=[]
             ),
         ]
-        main_text = "Following (de la Cruz, 2024)."
+        main_text = "Following the approach of (de la Cruz, 2024), we improve the model significantly."
         papers = extractor._extract_and_associate_claims(main_text, papers)
         assert len(papers[0].claims) == 1
 
@@ -689,7 +689,7 @@ class TestAuthorYearMatchingEdgeCases:
             ),
         ]
         # (Smith, 2024) is ambiguous - should match both
-        main_text = "As shown in (Smith, 2024)."
+        main_text = "As shown in (Smith, 2024), both methods achieve similar performance."
         papers = extractor._extract_and_associate_claims(main_text, papers)
         # Both papers should get the claim
         assert len(papers[0].claims) == 1
@@ -734,7 +734,7 @@ class TestAuthorYearMatchingEdgeCases:
             ),
         ]
         # Now matches case-insensitively
-        main_text = "As shown in (smith, 2024)."
+        main_text = "As shown in (smith, 2024), the approach works well on benchmarks."
         papers = extractor._extract_and_associate_claims(main_text, papers)
         # Should match despite lowercase
         assert len(papers[0].claims) == 1
@@ -892,9 +892,9 @@ class TestDocumentSplitting:
 
     def test_duplicate_citations_same_paper(self, extractor, sample_papers):
         """Paper cited multiple times gets multiple claims."""
-        main_text = """Introduction
-        First mention [1].
-        Later we see [1] again."""
+        main_text = """Introduction provides background information.
+        First mention of this important work is in [1].
+        Later we see [1] again in the discussion section."""
 
         papers = extractor._extract_and_associate_claims(main_text, sample_papers)
 
@@ -908,3 +908,80 @@ class TestDocumentSplitting:
         citations = extractor._find_citations_in_sentence(text)
         numeric = [c for c in citations if c['type'] == 'numeric']
         assert len(numeric) >= 1
+
+
+class TestSectionHeaderFiltering:
+    """Test filtering of section headers from claims."""
+
+    @pytest.fixture
+    def extractor(self):
+        mock_llm = MagicMock()
+        return TextExtractor(llm=mock_llm)
+
+    def test_filter_section_header_numbered(self, extractor):
+        """Filter section headers like '2 RELATED WORK'."""
+        sentences = [
+            "Previous work is important.",
+            "2 RELATED WORK",
+            "This paper proposes a new method [1]."
+        ]
+        claim = extractor._build_claim(2, sentences)
+        assert claim is not None
+        assert "2 RELATED WORK" not in claim
+
+    def test_filter_section_header_subsection(self, extractor):
+        """Filter subsection headers like '3.1 Method'."""
+        sentences = [
+            "Introduction to methods and related work.",
+            "3.1 EXPERIMENTAL SETUP",
+            "Results show significant improvement in our experiments [1]."
+        ]
+        claim = extractor._build_claim(2, sentences)
+        assert claim is not None
+        assert "3.1" not in claim
+
+    def test_filter_table_caption(self, extractor):
+        """Filter table captions."""
+        sentences = [
+            "Table 1 shows the results.",
+            "The method outperforms baseline [1]."
+        ]
+        claim = extractor._build_claim(1, sentences)
+        assert claim is not None
+        assert "Table 1" not in claim
+
+    def test_filter_figure_caption(self, extractor):
+        """Filter figure captions."""
+        sentences = [
+            "Figure 2 illustrates the architecture.",
+            "This design enables better performance [1]."
+        ]
+        claim = extractor._build_claim(1, sentences)
+        assert claim is not None
+        assert "Figure 2" not in claim
+
+    def test_filter_short_sentence(self, extractor):
+        """Filter very short sentences."""
+        sentences = [
+            "Ok.",
+            "This is a complete sentence with citation [1]."
+        ]
+        claim = extractor._build_claim(1, sentences)
+        assert claim is not None
+        assert "Ok." not in claim
+
+    def test_section_header_returns_none(self, extractor):
+        """Section header sentence returns None."""
+        sentences = ["2 RELATED WORK"]
+        claim = extractor._build_claim(0, sentences)
+        assert claim is None
+
+    def test_is_section_header_patterns(self, extractor):
+        """Test various section header patterns."""
+        assert extractor._is_section_header("2 RELATED WORK") is True
+        assert extractor._is_section_header("3.1 Method") is True
+        assert extractor._is_section_header("REFERENCES") is True
+        assert extractor._is_section_header("Table 1") is True
+        assert extractor._is_section_header("Fig. 2") is True
+        assert extractor._is_section_header("This is a normal claim.") is False
+        assert extractor._is_section_header("The model achieves 95% accuracy.") is False

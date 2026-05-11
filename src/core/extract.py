@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional, Callable, Dict, Tuple, Match
+from typing import List, Optional, Callable, Dict, Tuple, Match, Set
 import re
 import fitz  # pymupdf
 from langchain_deepseek import ChatDeepSeek
@@ -46,15 +46,32 @@ class Extractor(ABC):
 class TextExtractor(Extractor):
     """Extract references and their associated claims from text."""
 
-    # Regex patterns for citation detection
-    CITATION_PATTERNS = [
-        # Digital citations: [1], [1,2], [1-3], [1, 2, 3]
-        (r'\[(\d+(?:\s*,\s*\d+)*)\]', 'numeric'),
-        (r'\[(\d+\s*-\s*\d+)\]', 'numeric_range'),
-        # Author-year: (Smith et al., 2024), (Smith, 2024), (Smith and Jones, 2024)
-        # Supports: hyphenated names (Smith-Jones), prefixes (de la Cruz), institutions (OpenAI)
-        (r'\(([^,]+?\s*,\s*\d{4})\)', 'author_year'),
+    # Regex patterns for citation detection - precompiled for performance
+    _CITATION_PATTERNS = [
+        (re.compile(r'\[(\d+(?:\s*,\s*\d+)*)\]'), 'numeric'),
+        (re.compile(r'\[(\d+\s*-\s*\d+)\]'), 'numeric_range'),
+        (re.compile(r'\(([^,]+?\s*,\s*\d{4})\)'), 'author_year'),
     ]
+
+    # Section header detection patterns - precompiled
+    _HEADER_NUMBERED = re.compile(r'^\d+(?:\.\d+)?\s+[A-Z]')
+    _HEADER_ALL_CAPS = re.compile(r'^[A-Z][A-Z\s\d\-]+$')
+    _FIGURE_TABLE = re.compile(r'^(?:Table|Figure|Fig\.)\s*\d', re.IGNORECASE)
+    _CITATION_BRACKETS = re.compile(r'\[.*?\]')
+
+    # Preprocessing patterns
+    _PREPROCESS_PATTERNS = [
+        (re.compile(r'\[\s*\n\s*(\d+)'), r'[\1'),           # [\n 1] -> [1]
+        (re.compile(r'(\d+)\s*\n\s*\]'), r'\1]'),           # [1\n ] -> [1]
+        (re.compile(r'(\d+)\s*,\s*\n\s*(\d+)'), r'\1, \2'),  # [1,\n 2] -> [1, 2]
+        (re.compile(r'(\d+)\s*\n\s*,'), r'\1,'),             # [1\n, 2] -> [1, 2]
+        (re.compile(r'(\d+)\s*-\s*\n\s*(\d+)'), r'\1-\2'),   # [1-\n 3] -> [1-3]
+        (re.compile(r'\[\s*\n\s*((?:\d+\s*,?\s*)+)\n\s*\]'), r'[\1]'),  # [\n 1, 2, 3 \n] -> [1, 2, 3]
+    ]
+    _MULTILINE_CITATION = re.compile(r'\[(\d[^\]]*?)\]')
+
+    # Sentence splitting
+    _SENTENCE_SPLIT = re.compile(r'(?<=[.!?])\s+')
 
     def __init__(self, llm: Optional[ChatDeepSeek] = None):
         if llm is not None:
@@ -101,40 +118,16 @@ class TextExtractor(Extractor):
         return papers
 
     def _preprocess_text(self, text: str) -> str:
-        """
-        Preprocess text to fix common PDF extraction issues.
-        Handles citations split across lines.
-        """
-        # Pattern 1: [\n 1] -> [1] (bracket then newline then number)
-        text = re.sub(r'\[\s*\n\s*(\d+)', r'[\1', text)
+        """Fix common PDF extraction issues with citations split across lines."""
+        # Apply preprocessing patterns
+        for pattern, replacement in self._PREPROCESS_PATTERNS:
+            text = pattern.sub(replacement, text)
 
-        # Pattern 2: [1\n ] -> [1] (number then newline then closing bracket)
-        text = re.sub(r'(\d+)\s*\n\s*\]', r'\1]', text)
+        # Remove newlines within citation brackets
+        def fix_citation(match):
+            return f'[{re.sub(r"\s+", " ", match.group(1))}]'
 
-        # Pattern 3: [1,\n 2] -> [1, 2] (comma after number then newline)
-        text = re.sub(r'(\d+)\s*,\s*\n\s*(\d+)', r'\1, \2', text)
-
-        # Pattern 4: [1\n, 2] -> [1, 2] (number then newline then comma)
-        text = re.sub(r'(\d+)\s*\n\s*,', r'\1,', text)
-
-        # Pattern 5: [1-\n 3] -> [1-3] (range with newline after dash)
-        text = re.sub(r'(\d+)\s*-\s*\n\s*(\d+)', r'\1-\2', text)
-
-        # Pattern 6: Multi-line citation with brackets on separate lines
-        # [\n 1, 2, 3 \n] -> [1, 2, 3]
-        text = re.sub(r'\[\s*\n\s*((?:\d+\s*,?\s*)+)\n\s*\]', r'[\1]', text)
-
-        # Pattern 7: Remove newlines within citation brackets (after other fixes)
-        # Replace newlines within brackets with space
-        def fix_newlines_in_citation(match):
-            content = match.group(1)
-            # Remove all whitespace including newlines, then normalize
-            content = re.sub(r'\s+', ' ', content)
-            return f'[{content}]'
-
-        text = re.sub(r'\[(\d[^\]]*?)\]', fix_newlines_in_citation, text)
-
-        return text
+        return self._MULTILINE_CITATION.sub(fix_citation, text)
 
     def _split_document(self, text: str) -> Tuple[str, str]:
         """
@@ -376,6 +369,8 @@ class TextExtractor(Extractor):
 
             # Build claim with context
             claim = self._build_claim(i, sentences)
+            if claim is None:
+                continue
 
             # Associate with papers
             self._associate_citations_to_papers(
@@ -400,16 +395,15 @@ class TextExtractor(Extractor):
 
     def _split_into_sentences(self, text: str) -> List[str]:
         """Split text into sentences."""
-        # Simple sentence splitting (can be improved)
-        sentences = re.split(r'(?<=[.!?])\s+', text)
+        sentences = self._SENTENCE_SPLIT.split(text)
         return [s.strip() for s in sentences if s.strip()]
 
     def _find_citations_in_sentence(self, sentence: str) -> List[Dict]:
         """Find all citations in a sentence."""
         citations = []
 
-        for pattern, cit_type in self.CITATION_PATTERNS:
-            for match in re.finditer(pattern, sentence):
+        for pattern, cit_type in self._CITATION_PATTERNS:
+            for match in pattern.finditer(sentence):
                 citations.append({
                     'type': cit_type,
                     'match': match,
@@ -418,18 +412,58 @@ class TextExtractor(Extractor):
 
         return citations
 
-    def _build_claim(self, sentence_idx: int, sentences: List[str]) -> str:
-        """Build claim text with context (current + previous sentence)."""
+    def _build_claim(self, sentence_idx: int, sentences: List[str]) -> Optional[str]:
+        """Build claim text with context (current + previous sentence).
+
+        Returns None if the sentence appears to be a section header or non-claim text.
+        """
+        current = sentences[sentence_idx]
+
+        # Skip section headers (e.g., "2 RELATED WORK", "2.1 Methodology")
+        if self._is_section_header(current):
+            return None
+
+        # Skip very short sentences (likely not claims)
+        if len(current) < 30:
+            return None
+
         parts = []
 
-        # Previous sentence if exists
+        # Previous sentence if exists and not a header
         if sentence_idx > 0:
-            parts.append(sentences[sentence_idx - 1])
+            prev = sentences[sentence_idx - 1]
+            if not self._is_section_header(prev) and len(prev) >= 20:
+                parts.append(prev)
 
         # Current sentence with citation
-        parts.append(sentences[sentence_idx])
+        parts.append(current)
 
         return ' '.join(parts)
+
+    def _is_section_header(self, text: str) -> bool:
+        """Check if text is likely a section header."""
+        text = text.strip()
+        if not text:
+            return False
+
+        # Check for figure/table captions first (fast path)
+        if self._FIGURE_TABLE.match(text):
+            return True
+
+        # Remove citations for header detection
+        text_no_cit = self._CITATION_BRACKETS.sub('', text).strip()
+
+        # Check numbered header: "2 RELATED WORK", "3.1 Method"
+        if self._HEADER_NUMBERED.match(text_no_cit):
+            words = text_no_cit.split()
+            if len(words) <= 6 and len(text_no_cit) < 80:
+                return True
+
+        # Check all-caps header: "REFERENCES", "INTRODUCTION"
+        if self._HEADER_ALL_CAPS.match(text_no_cit) and len(text_no_cit) < 50:
+            return True
+
+        return False
 
     def _associate_citations_to_papers(
         self,
@@ -439,7 +473,10 @@ class TextExtractor(Extractor):
         author_year_map: Dict[Tuple[str, str], List[Paper]],
         all_papers: List[Paper],
     ) -> None:
-        """Associate citations to papers."""
+        """Associate citations to papers with deduplication."""
+        # Track which papers already have this claim to avoid duplicates
+        papers_with_claim: Set[str] = set()
+
         for citation in citations:
             cit_type = citation['type']
 
@@ -448,7 +485,10 @@ class TextExtractor(Extractor):
                 nums = self._parse_numeric_citation(citation['text'])
                 for num in nums:
                     if num in numeric_map:
-                        numeric_map[num].claims.append(claim)
+                        paper = numeric_map[num]
+                        if paper.id not in papers_with_claim:
+                            paper.claims.append(claim)
+                            papers_with_claim.add(paper.id)
 
             elif cit_type == 'author_year':
                 # Parse author-year: (Smith et al., 2024)
@@ -457,12 +497,10 @@ class TextExtractor(Extractor):
                     key = (parsed['author'], parsed['year'])
                     if key in author_year_map:
                         papers = author_year_map[key]
-                        if len(papers) == 1:
-                            papers[0].claims.append(claim)
-                        else:
-                            # Ambiguous: add to all candidates
-                            for paper in papers:
+                        for paper in papers:
+                            if paper.id not in papers_with_claim:
                                 paper.claims.append(claim)
+                                papers_with_claim.add(paper.id)
 
     def _parse_numeric_citation(self, citation_text: str) -> List[str]:
         """Parse numeric citation like [1,2,3] or [1-3] into list of numbers."""
