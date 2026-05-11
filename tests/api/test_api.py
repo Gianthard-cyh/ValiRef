@@ -492,11 +492,14 @@ class TestPDFValidationWorker:
         worker = PDFValidationWorker()
         worker.task_store = AsyncMock()
         worker.queue = AsyncMock()
-        worker.pipeline = AsyncMock()
+        worker.extractor = MagicMock()
+        worker.detector = MagicMock()
         return worker
 
     @pytest.mark.asyncio
-    async def test_process_message_success(self, mock_worker):
+    @patch("src.api.worker.consumer.ValidationPipeline")
+    @patch("src.api.worker.consumer.WorkerProgressCallback")
+    async def test_process_message_success(self, mock_callback_class, mock_pipeline_class, mock_worker):
         """测试Worker PDF处理流程和结果存储"""
         mock_message = MagicMock()
         mock_message.body = json.dumps({
@@ -507,7 +510,9 @@ class TestPDFValidationWorker:
             "retry_count": 0
         }).encode()
 
-        mock_worker.pipeline.process_pdf.return_value = {
+        # Mock pipeline instance
+        mock_pipeline = MagicMock()
+        mock_pipeline.process_pdf = AsyncMock(return_value={
             "references_count": 2,
             "validated_count": 2,
             "duration_seconds": 10.5,
@@ -521,7 +526,12 @@ class TestPDFValidationWorker:
                     "validation": {"is_hallucination": True, "hallucination_type": "fabrication", "confidence": 0.8, "reasoning": "Fake", "evidence": []}
                 }
             ]
-        }
+        })
+        mock_pipeline_class.return_value = mock_pipeline
+
+        # Mock callback
+        mock_callback = MagicMock()
+        mock_callback_class.return_value = mock_callback
 
         # Create async context manager mock for message.process()
         mock_process_cm = MagicMock()
@@ -542,7 +552,9 @@ class TestPDFValidationWorker:
         assert args[1] == "completed"
 
     @pytest.mark.asyncio
-    async def test_worker_under_max_retries_raises_for_retry(self, mock_worker):
+    @patch("src.api.worker.consumer.ValidationPipeline")
+    @patch("src.api.worker.consumer.WorkerProgressCallback")
+    async def test_worker_under_max_retries_raises_for_retry(self, mock_callback_class, mock_pipeline_class, mock_worker):
         """测试Worker在重试次数内抛出异常，让RabbitMQ自动重试"""
         mock_message = MagicMock()
         mock_message.body = json.dumps({
@@ -553,8 +565,15 @@ class TestPDFValidationWorker:
             "retry_count": 0  # 未达到最大重试次数
         }).encode()
 
+        # Mock pipeline instance
+        mock_pipeline = MagicMock()
         # Simulate pipeline failure
-        mock_worker.pipeline.process_pdf.side_effect = Exception("Processing error")
+        mock_pipeline.process_pdf = AsyncMock(side_effect=Exception("Processing error"))
+        mock_pipeline_class.return_value = mock_pipeline
+
+        # Mock callback
+        mock_callback = MagicMock()
+        mock_callback_class.return_value = mock_callback
 
         mock_process_cm = MagicMock()
         mock_process_cm.__aenter__ = AsyncMock(return_value=None)
@@ -571,7 +590,9 @@ class TestPDFValidationWorker:
         mock_worker.queue.publish_to_dlq.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_worker_max_retries_exceeded_sends_to_dlq(self, mock_worker):
+    @patch("src.api.worker.consumer.ValidationPipeline")
+    @patch("src.api.worker.consumer.WorkerProgressCallback")
+    async def test_worker_max_retries_exceeded_sends_to_dlq(self, mock_callback_class, mock_pipeline_class, mock_worker):
         """测试超过最大重试次数时发送到DLQ"""
         mock_message = MagicMock()
         mock_message.body = json.dumps({
@@ -582,7 +603,14 @@ class TestPDFValidationWorker:
             "retry_count": 3  # 已达到最大重试次数
         }).encode()
 
-        mock_worker.pipeline.process_pdf.side_effect = Exception("Processing error")
+        # Mock pipeline instance
+        mock_pipeline = MagicMock()
+        mock_pipeline.process_pdf = AsyncMock(side_effect=Exception("Processing error"))
+        mock_pipeline_class.return_value = mock_pipeline
+
+        # Mock callback
+        mock_callback = MagicMock()
+        mock_callback_class.return_value = mock_callback
 
         mock_process_cm = MagicMock()
         mock_process_cm.__aenter__ = AsyncMock(return_value=None)

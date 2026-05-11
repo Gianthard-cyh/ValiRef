@@ -30,6 +30,7 @@ from ..services.metrics import (
     tasks_active,
     task_duration_seconds,
 )
+from ..worker.progress_callback import WorkerProgressCallback
 from prometheus_client import start_http_server
 
 # Configure logging for backend (JSON format)
@@ -55,9 +56,9 @@ class PDFValidationWorker:
         pdf_extractor = PDFExtractor(text_extractor=text_extractor)
         detector = create_detector(llm=llm, search_mode="local")
 
-        self.pipeline = ValidationPipeline(
-            extractor=pdf_extractor, detector=detector, callbacks=[]
-        )
+        # Pipeline will be created per-task with progress callback
+        self.extractor = pdf_extractor
+        self.detector = detector
 
         await self.task_store.initialize()
         await self.queue.connect()
@@ -101,9 +102,21 @@ class PDFValidationWorker:
 
                     start_time = time.time()
 
+                    # Create progress callback for this task
+                    progress_callback = WorkerProgressCallback(
+                        self.task_store, task_id, self.queue
+                    )
+
+                    # Create pipeline with progress callback
+                    pipeline = ValidationPipeline(
+                        extractor=self.extractor,
+                        detector=self.detector,
+                        callbacks=[progress_callback],
+                    )
+
                     async with self.semaphore:
                         try:
-                            result = await self.pipeline.process_pdf(pdf_path, max_workers=5)
+                            result = await pipeline.process_pdf(pdf_path, max_workers=5)
 
                             references = [
                                 {
