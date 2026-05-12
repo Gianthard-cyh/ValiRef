@@ -20,52 +20,52 @@ class TestCitationParsing:
 
     def test_parse_numeric_single(self, extractor):
         """Parse single numeric citation [1]."""
-        result = extractor._parse_numeric_citation("[1]")
+        result = extractor._parse_numeric("[1]")
         assert result == ["1"]
 
     def test_parse_numeric_multiple(self, extractor):
         """Parse multiple numeric citations [1,2,3]."""
-        result = extractor._parse_numeric_citation("[1,2,3]")
+        result = extractor._parse_numeric("[1,2,3]")
         assert result == ["1", "2", "3"]
 
     def test_parse_numeric_with_spaces(self, extractor):
         """Parse citations with spaces [1, 2, 3]."""
-        result = extractor._parse_numeric_citation("[1, 2, 3]")
+        result = extractor._parse_numeric("[1, 2, 3]")
         assert result == ["1", "2", "3"]
 
     def test_parse_numeric_range(self, extractor):
         """Parse range citation [1-3]."""
-        result = extractor._parse_numeric_citation("[1-3]")
+        result = extractor._parse_numeric("[1-3]")
         assert result == ["1", "2", "3"]
 
     def test_parse_numeric_range_with_spaces(self, extractor):
         """Parse range with spaces [1 - 3]."""
-        result = extractor._parse_numeric_citation("[1 - 3]")
+        result = extractor._parse_numeric("[1 - 3]")
         assert result == ["1", "2", "3"]
 
     def test_parse_numeric_empty(self, extractor):
         """Parse empty citation []."""
-        result = extractor._parse_numeric_citation("[]")
+        result = extractor._parse_numeric("[]")
         assert result == []
 
     def test_parse_author_year_simple(self, extractor):
         """Parse simple author-year (Smith, 2024)."""
-        result = extractor._parse_author_year_citation("(Smith, 2024)")
+        result = extractor._parse_author_year("(Smith, 2024)")
         assert result == {'author': 'smith', 'year': '2024'}
 
     def test_parse_author_year_et_al(self, extractor):
         """Parse author-year with et al. (Smith et al., 2024)."""
-        result = extractor._parse_author_year_citation("(Smith et al., 2024)")
+        result = extractor._parse_author_year("(Smith et al., 2024)")
         assert result == {'author': 'smith', 'year': '2024'}
 
     def test_parse_author_year_two_authors(self, extractor):
         """Parse author-year with two authors (Smith and Jones, 2024) - extracts first author."""
-        result = extractor._parse_author_year_citation("(Smith and Jones, 2024)")
+        result = extractor._parse_author_year("(Smith and Jones, 2024)")
         assert result == {'author': 'smith', 'year': '2024'}
 
     def test_parse_author_year_no_match(self, extractor):
         """Parse non-matching citation."""
-        result = extractor._parse_author_year_citation("(2024)")
+        result = extractor._parse_author_year("(2024)")
         assert result is None
 
 
@@ -80,7 +80,7 @@ class TestSentenceSplitting:
     def test_split_simple_sentences(self, extractor):
         """Split simple sentences."""
         text = "First sentence. Second sentence. Third sentence."
-        sentences = extractor._split_into_sentences(text)
+        sentences = extractor._split_sentences(text)
         assert len(sentences) == 3
         assert sentences[0] == "First sentence."
         assert sentences[1] == "Second sentence."
@@ -89,25 +89,25 @@ class TestSentenceSplitting:
     def test_split_with_exclamation(self, extractor):
         """Split sentences with exclamation."""
         text = "Wow! This is great. Really."
-        sentences = extractor._split_into_sentences(text)
+        sentences = extractor._split_sentences(text)
         assert len(sentences) == 3
 
     def test_split_with_question(self, extractor):
         """Split sentences with question mark."""
         text = "What is this? It is a test."
-        sentences = extractor._split_into_sentences(text)
+        sentences = extractor._split_sentences(text)
         assert len(sentences) == 2
 
     def test_split_empty(self, extractor):
         """Split empty text."""
         text = ""
-        sentences = extractor._split_into_sentences(text)
+        sentences = extractor._split_sentences(text)
         assert sentences == []
 
     def test_split_multiple_spaces(self, extractor):
         """Split text with multiple spaces."""
         text = "First.   Second."
-        sentences = extractor._split_into_sentences(text)
+        sentences = extractor._split_sentences(text)
         assert len(sentences) == 2
 
 
@@ -161,14 +161,14 @@ class TestCitationFinding:
     def test_find_numeric_citation(self, extractor):
         """Find numeric citation in sentence."""
         sentence = "As shown in [1], the model works well."
-        citations = extractor._find_citations_in_sentence(sentence)
+        citations = extractor._find_citations(sentence)
         assert len(citations) >= 1
         assert any(c['type'] == 'numeric' for c in citations)
 
     def test_find_multiple_citations(self, extractor):
         """Find multiple citations in sentence."""
         sentence = "As shown in [1,2] and [3], the model works."
-        citations = extractor._find_citations_in_sentence(sentence)
+        citations = extractor._find_citations(sentence)
         numeric_cits = [c for c in citations if c['type'] == 'numeric']
         assert len(numeric_cits) >= 2
 
@@ -177,14 +177,14 @@ class TestCitationFinding:
         sentence = "As demonstrated by Smith et al. (2024), the method is effective."
         # Note: author-year pattern may not match if not in parentheses
         sentence2 = "As demonstrated (Smith et al., 2024), the method is effective."
-        citations = extractor._find_citations_in_sentence(sentence2)
+        citations = extractor._find_citations(sentence2)
         author_year_cits = [c for c in citations if c['type'] == 'author_year']
         assert len(author_year_cits) >= 1
 
     def test_find_no_citation(self, extractor):
         """Find no citations in plain sentence."""
         sentence = "This is a plain sentence without citations."
-        citations = extractor._find_citations_in_sentence(sentence)
+        citations = extractor._find_citations(sentence)
         assert len(citations) == 0
 
 
@@ -293,7 +293,7 @@ class TestClaimAssociation:
         main_text = """Introduction
         As shown in [1], the method works well."""
 
-        papers = extractor._extract_and_associate_claims(main_text, sample_papers)
+        papers = extractor._extract_claims(main_text, sample_papers)
 
         assert len(papers[0].claims) == 1
         assert "As shown in [1]" in papers[0].claims[0]
@@ -304,7 +304,7 @@ class TestClaimAssociation:
         main_text = """Method
         Previous work [1,2] has shown promising results."""
 
-        papers = extractor._extract_and_associate_claims(main_text, sample_papers)
+        papers = extractor._extract_claims(main_text, sample_papers)
 
         assert len(papers[0].claims) == 1
         assert len(papers[1].claims) == 1
@@ -314,7 +314,7 @@ class TestClaimAssociation:
         main_text = """Results
         As discussed in [1-2], both methods work."""
 
-        papers = extractor._extract_and_associate_claims(main_text, sample_papers)
+        papers = extractor._extract_claims(main_text, sample_papers)
 
         assert len(papers[0].claims) == 1
         assert len(papers[1].claims) == 1
@@ -324,7 +324,7 @@ class TestClaimAssociation:
         main_text = """Method
         Recent work (Smith, 2024) demonstrates this."""
 
-        papers = extractor._extract_and_associate_claims(main_text, sample_papers)
+        papers = extractor._extract_claims(main_text, sample_papers)
 
         assert len(papers[0].claims) == 1
         assert "Recent work (Smith, 2024)" in papers[0].claims[0]
@@ -334,7 +334,7 @@ class TestClaimAssociation:
         main_text = """Introduction
         The problem is challenging. As shown in [1], the solution works."""
 
-        papers = extractor._extract_and_associate_claims(main_text, sample_papers)
+        papers = extractor._extract_claims(main_text, sample_papers)
 
         assert "The problem is challenging." in papers[0].claims[0]
         assert "As shown in [1]" in papers[0].claims[0]
@@ -344,7 +344,7 @@ class TestClaimAssociation:
         main_text = """Introduction
         Only [1] is cited here."""
 
-        papers = extractor._extract_and_associate_claims(main_text, sample_papers)
+        papers = extractor._extract_claims(main_text, sample_papers)
 
         assert len(papers[0].claims) == 1
         assert len(papers[1].claims) == 0
@@ -361,27 +361,27 @@ class TestAuthorValidation:
     def test_accept_correct_format(self, extractor):
         """Accept correct 'LastName, FirstName' format."""
         authors = ["Smith, John", "Jones, Bob"]
-        result = extractor._validate_and_normalize_authors(authors, 1, "Test Paper")
+        result = extractor._normalize_authors(authors, 1, "Test Paper")
         assert result == authors
 
     def test_normalize_first_last_format(self, extractor):
         """Normalize 'FirstName LastName' to 'LastName, FirstName'."""
         authors = ["John Smith"]
-        result = extractor._validate_and_normalize_authors(authors, 1, "Test Paper")
+        result = extractor._normalize_authors(authors, 1, "Test Paper")
 
         assert result == ["Smith, John"]
 
     def test_detect_academic_title(self, extractor):
         """Detect and warn about academic titles - keeps original."""
         authors = ["Dr. Smith, John"]
-        result = extractor._validate_and_normalize_authors(authors, 1, "Test Paper")
+        result = extractor._normalize_authors(authors, 1, "Test Paper")
 
         assert result == ["Dr. Smith, John"]  # Kept as-is but warned
 
     def test_detect_professor_title(self, extractor):
         """Detect 'Prof.' title - keeps original."""
         authors = ["Prof. Jones, Bob"]
-        result = extractor._validate_and_normalize_authors(authors, 1, "Test Paper")
+        result = extractor._normalize_authors(authors, 1, "Test Paper")
 
         assert "Prof. Jones, Bob" in result
 
@@ -389,7 +389,7 @@ class TestAuthorValidation:
         """Accept institution names without comma."""
         # OpenAI (mixed case, single word) and 3+ word institution
         authors = ["OpenAI", "Google DeepMind Research"]
-        result = extractor._validate_and_normalize_authors(authors, 1, "Test Paper")
+        result = extractor._normalize_authors(authors, 1, "Test Paper")
 
         assert result[0] == "OpenAI"  # Mixed case single word, kept
         assert result[1] == "Google DeepMind Research"  # 3 words, kept
@@ -397,7 +397,7 @@ class TestAuthorValidation:
     def test_normalize_with_middle_initial(self, extractor):
         """Normalize name with middle initial (has punctuation)."""
         authors = ["John A. Smith"]
-        result = extractor._validate_and_normalize_authors(authors, 1, "Test Paper")
+        result = extractor._normalize_authors(authors, 1, "Test Paper")
 
         # Has punctuation (A.), so normalized
         assert result == ["Smith, John A."]
@@ -405,21 +405,21 @@ class TestAuthorValidation:
     def test_skip_n_and_empty(self, extractor):
         """Skip 'N/A' and empty strings."""
         authors = ["Smith, John", "N/A", ""]
-        result = extractor._validate_and_normalize_authors(authors, 1, "Test Paper")
+        result = extractor._normalize_authors(authors, 1, "Test Paper")
 
         assert result == ["Smith, John"]
 
     def test_keep_original_if_cannot_normalize(self, extractor):
         """Keep original if cannot normalize (single word)."""
         authors = ["Smith"]  # Single word, can't determine first/last
-        result = extractor._validate_and_normalize_authors(authors, 1, "Test Paper")
+        result = extractor._normalize_authors(authors, 1, "Test Paper")
 
         assert result == ["Smith"]
 
     def test_normalize_multi_word_name(self, extractor):
         """Normalize multi-word first name."""
         authors = ["Mary Ann Smith"]  # 3 words, no punctuation
-        result = extractor._validate_and_normalize_authors(authors, 1, "Test Paper")
+        result = extractor._normalize_authors(authors, 1, "Test Paper")
 
         # 3 words, treated as institution, so kept as-is
         assert result == ["Mary Ann Smith"]
@@ -602,7 +602,7 @@ class TestAuthorYearMatchingEdgeCases:
         ]
         # Should match despite initials
         main_text = "Recent work (Smith, 2024) shows this."
-        papers = extractor._extract_and_associate_claims(main_text, papers)
+        papers = extractor._extract_claims(main_text, papers)
         assert len(papers[0].claims) == 1
 
     def test_match_hyphenated_author(self, extractor):
@@ -621,7 +621,7 @@ class TestAuthorYearMatchingEdgeCases:
             ),
         ]
         main_text = "As shown in (Smith-Jones, 2024)."
-        papers = extractor._extract_and_associate_claims(main_text, papers)
+        papers = extractor._extract_claims(main_text, papers)
         assert len(papers[0].claims) == 1
 
     def test_match_de_la_prefix_author(self, extractor):
@@ -640,7 +640,7 @@ class TestAuthorYearMatchingEdgeCases:
             ),
         ]
         main_text = "Following the approach of (de la Cruz, 2024), we improve the model significantly."
-        papers = extractor._extract_and_associate_claims(main_text, papers)
+        papers = extractor._extract_claims(main_text, papers)
         assert len(papers[0].claims) == 1
 
     def test_match_institution_author(self, extractor):
@@ -659,7 +659,7 @@ class TestAuthorYearMatchingEdgeCases:
             ),
         ]
         main_text = "According to (OpenAI, 2024), models improve."
-        papers = extractor._extract_and_associate_claims(main_text, papers)
+        papers = extractor._extract_claims(main_text, papers)
         assert len(papers[0].claims) == 1
 
     def test_ambiguous_surname_multiple_authors(self, extractor):
@@ -690,7 +690,7 @@ class TestAuthorYearMatchingEdgeCases:
         ]
         # (Smith, 2024) is ambiguous - should match both
         main_text = "As shown in (Smith, 2024), both methods achieve similar performance."
-        papers = extractor._extract_and_associate_claims(main_text, papers)
+        papers = extractor._extract_claims(main_text, papers)
         # Both papers should get the claim
         assert len(papers[0].claims) == 1
         assert len(papers[1].claims) == 1
@@ -711,11 +711,11 @@ class TestAuthorYearMatchingEdgeCases:
             ),
         ]
         main_text = "Smith et al., 2024) proposed this."
-        papers = extractor._extract_and_associate_claims(main_text, papers)
+        papers = extractor._extract_claims(main_text, papers)
         assert len(papers[0].claims) == 0  # Missing opening parenthesis won't match
 
         main_text2 = "Recent work (Smith et al., 2024) proposed this."
-        papers2 = extractor._extract_and_associate_claims(main_text2, papers)
+        papers2 = extractor._extract_claims(main_text2, papers)
         assert len(papers2[0].claims) == 1
 
     def test_author_year_lowercase_in_citation(self, extractor):
@@ -735,7 +735,7 @@ class TestAuthorYearMatchingEdgeCases:
         ]
         # Now matches case-insensitively
         main_text = "As shown in (smith, 2024), the approach works well on benchmarks."
-        papers = extractor._extract_and_associate_claims(main_text, papers)
+        papers = extractor._extract_claims(main_text, papers)
         # Should match despite lowercase
         assert len(papers[0].claims) == 1
 
@@ -755,7 +755,7 @@ class TestAuthorYearMatchingEdgeCases:
             ),
         ]
         main_text = "Recent work (Smith and Jones, 2024) shows this."
-        papers = extractor._extract_and_associate_claims(main_text, papers)
+        papers = extractor._extract_claims(main_text, papers)
         assert len(papers[0].claims) == 1
 
 
@@ -875,7 +875,7 @@ class TestDocumentSplitting:
     def test_citation_in_parentheses_not_author_year(self, extractor):
         """Handle parenthetical text that's not citation."""
         text = "This is (not a citation) just text."
-        citations = extractor._find_citations_in_sentence(text)
+        citations = extractor._find_citations(text)
         # Should not match author-year pattern without author
         author_year = [c for c in citations if c['type'] == 'author_year']
         assert len(author_year) == 0
@@ -884,7 +884,7 @@ class TestDocumentSplitting:
         """Handle citation at start of sentence (no previous context)."""
         main_text = """Introduction. [1] demonstrates this approach."""
 
-        papers = extractor._extract_and_associate_claims(main_text, sample_papers)
+        papers = extractor._extract_claims(main_text, sample_papers)
 
         assert len(papers[0].claims) == 1
         # Should include previous sentence context (Introduction.)
@@ -896,7 +896,7 @@ class TestDocumentSplitting:
         First mention of this important work is in [1].
         Later we see [1] again in the discussion section."""
 
-        papers = extractor._extract_and_associate_claims(main_text, sample_papers)
+        papers = extractor._extract_claims(main_text, sample_papers)
 
         assert len(papers[0].claims) == 2
 
@@ -905,7 +905,7 @@ class TestDocumentSplitting:
         # Equations might have brackets that look like citations
         text = "The formula is f(x) = x^2 [1] for all x."
         # This should still match [1] as a citation
-        citations = extractor._find_citations_in_sentence(text)
+        citations = extractor._find_citations(text)
         numeric = [c for c in citations if c['type'] == 'numeric']
         assert len(numeric) >= 1
 
@@ -976,12 +976,12 @@ class TestSectionHeaderFiltering:
         claim = extractor._build_claim(0, sentences)
         assert claim is None
 
-    def test_is_section_header_patterns(self, extractor):
+    def test_is_header_patterns(self, extractor):
         """Test various section header patterns."""
-        assert extractor._is_section_header("2 RELATED WORK") is True
-        assert extractor._is_section_header("3.1 Method") is True
-        assert extractor._is_section_header("REFERENCES") is True
-        assert extractor._is_section_header("Table 1") is True
-        assert extractor._is_section_header("Fig. 2") is True
-        assert extractor._is_section_header("This is a normal claim.") is False
-        assert extractor._is_section_header("The model achieves 95% accuracy.") is False
+        assert extractor._is_header("2 RELATED WORK") is True
+        assert extractor._is_header("3.1 Method") is True
+        assert extractor._is_header("REFERENCES") is True
+        assert extractor._is_header("Table 1") is True
+        assert extractor._is_header("Fig. 2") is True
+        assert extractor._is_header("This is a normal claim.") is False
+        assert extractor._is_header("The model achieves 95% accuracy.") is False

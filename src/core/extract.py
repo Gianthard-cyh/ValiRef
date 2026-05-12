@@ -108,12 +108,12 @@ class TextExtractor(Extractor):
         body, refs = self._split_document(text)
 
         # Phase 1: Extract references from References section
-        papers = await self._extract_references_from_section(refs, on_progress)
+        papers = await self._extract_refs(refs, on_progress)
         if not papers:
             return []
 
         # Phase 2: Extract and associate claims from body only
-        papers = self._extract_and_associate_claims(body, papers)
+        papers = self._extract_claims(body, papers)
 
         return papers
 
@@ -165,12 +165,8 @@ class TextExtractor(Extractor):
                 error_code=ErrorCode.PDF_TOO_SHORT,
             )
 
-    async def _extract_references_from_section(
-        self,
-        refs: str,
-        on_progress: Optional[Callable[[int, List[Reference]], None]] = None,
-    ) -> List[Paper]:
-        """Extract reference list from References section text."""
+    async def _extract_refs(self, refs: str, on_progress=None) -> List[Paper]:
+        """Extract reference list from References section."""
         prompt = ChatPromptTemplate.from_template(
             "You are an expert researcher. Extract a list of referenced/cited research papers from the following text segment.\n"
             "The text is the END of a research paper, containing the References/Bibliography section.\n"
@@ -236,7 +232,7 @@ class TextExtractor(Extractor):
         papers = []
         for idx, ref in enumerate(references, start=1):
             # Validate author format
-            validated_authors = self._validate_and_normalize_authors(ref.authors, idx, ref.title)
+            validated_authors = self._normalize_authors(ref.authors, idx, ref.title)
 
             paper = Paper(
                 source="reference",
@@ -253,7 +249,7 @@ class TextExtractor(Extractor):
             papers.append(paper)
         return papers
 
-    def _validate_and_normalize_authors(self, authors: List[str], idx: int, title: str) -> List[str]:
+    def _normalize_authors(self, authors: List[str], idx: int, title: str) -> List[str]:
         """Validate author format and normalize if possible."""
         validated = []
         titles = {'dr.', 'prof.', 'professor', 'mr.', 'mrs.', 'ms.'}
@@ -313,7 +309,7 @@ class TextExtractor(Extractor):
 
         return validated if validated else authors
 
-    def _extract_and_associate_claims(
+    def _extract_claims(
         self,
         text: str,
         papers: List[Paper],
@@ -335,11 +331,11 @@ class TextExtractor(Extractor):
                     author_index[key].append(paper)
 
         # Split text into sentences for context extraction
-        sentences = self._split_into_sentences(text)
+        sentences = self._split_sentences(text)
 
         # Scan for citations
         for i, sentence in enumerate(sentences):
-            citations = self._find_citations_in_sentence(sentence)
+            citations = self._find_citations(sentence)
             if not citations:
                 continue
 
@@ -349,7 +345,7 @@ class TextExtractor(Extractor):
                 continue
 
             # Associate with papers
-            self._associate_citations_to_papers(
+            self._associate_claims(
                 citations, claim, index, author_index
             )
 
@@ -369,12 +365,12 @@ class TextExtractor(Extractor):
         parts = author.split()
         return parts[-1].lower() if parts else None
 
-    def _split_into_sentences(self, text: str) -> List[str]:
+    def _split_sentences(self, text: str) -> List[str]:
         """Split text into sentences."""
         sentences = self._SENTENCE_SPLIT.split(text)
         return [s.strip() for s in sentences if s.strip()]
 
-    def _find_citations_in_sentence(self, sentence: str) -> List[Dict]:
+    def _find_citations(self, sentence: str) -> List[Dict]:
         """Find all citations in a sentence."""
         citations = []
 
@@ -396,7 +392,7 @@ class TextExtractor(Extractor):
         current = sentences[sentence_idx]
 
         # Skip section headers (e.g., "2 RELATED WORK", "2.1 Methodology")
-        if self._is_section_header(current):
+        if self._is_header(current):
             return None
 
         # Skip very short sentences (likely not claims)
@@ -408,7 +404,7 @@ class TextExtractor(Extractor):
         # Previous sentence if exists and not a header
         if sentence_idx > 0:
             prev = sentences[sentence_idx - 1]
-            if not self._is_section_header(prev) and len(prev) >= 20:
+            if not self._is_header(prev) and len(prev) >= 20:
                 parts.append(prev)
 
         # Current sentence with citation
@@ -416,7 +412,7 @@ class TextExtractor(Extractor):
 
         return ' '.join(parts)
 
-    def _is_section_header(self, text: str) -> bool:
+    def _is_header(self, text: str) -> bool:
         """Check if text is likely a section header."""
         text = text.strip()
         if not text:
@@ -441,7 +437,7 @@ class TextExtractor(Extractor):
 
         return False
 
-    def _associate_citations_to_papers(
+    def _associate_claims(
         self,
         citations: List[Dict],
         claim: str,
@@ -455,7 +451,7 @@ class TextExtractor(Extractor):
             cit_type = citation['type']
 
             if cit_type in ('numeric', 'numeric_range'):
-                nums = self._parse_numeric_citation(citation['text'])
+                nums = self._parse_numeric(citation['text'])
                 for num in nums:
                     if num in index:
                         paper = index[num]
@@ -464,7 +460,7 @@ class TextExtractor(Extractor):
                             seen.add(paper.id)
 
             elif cit_type == 'author_year':
-                parsed = self._parse_author_year_citation(citation['text'])
+                parsed = self._parse_author_year(citation['text'])
                 if parsed:
                     key = (parsed['author'], parsed['year'])
                     if key in author_index:
@@ -473,7 +469,7 @@ class TextExtractor(Extractor):
                                 paper.claims.append(claim)
                                 seen.add(paper.id)
 
-    def _parse_numeric_citation(self, citation_text: str) -> List[str]:
+    def _parse_numeric(self, citation_text: str) -> List[str]:
         """Parse numeric citation like [1,2,3] or [1-3] into list of numbers."""
         nums = []
         content = citation_text.strip('[]()')
@@ -494,8 +490,8 @@ class TextExtractor(Extractor):
 
         return nums
 
-    def _parse_author_year_citation(self, citation_text: str) -> Optional[Dict]:
-        """Parse author-year citation like (Smith et al., 2024) or (de la Cruz, 2024)."""
+    def _parse_author_year(self, citation_text: str) -> Optional[Dict]:
+        """Parse author-year citation like (Smith et al., 2024)."""
         content = citation_text.strip('()')
         # Split on comma, but only the last comma (year separator)
         parts = content.rsplit(',', 1)
@@ -506,14 +502,14 @@ class TextExtractor(Extractor):
 
             # Extract first author surname (handle "et al.", "and", prefixes)
             # Examples: "Smith et al.", "Smith and Jones", "de la Cruz", "OpenAI"
-            author_key = self._extract_first_author_key(author_part)
+            author_key = self._extract_author(author_part)
 
             if author_key:
                 return {'author': author_key, 'year': year}
 
         return None
 
-    def _extract_first_author_key(self, author_str: str) -> Optional[str]:
+    def _extract_author(self, author_str: str) -> Optional[str]:
         """Extract first author surname from author-year citation."""
         # Remove "et al."
         author_str = re.sub(r'\s+et\s+al\.?', '', author_str, flags=re.IGNORECASE)
