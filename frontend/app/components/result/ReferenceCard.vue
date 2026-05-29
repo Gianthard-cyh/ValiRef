@@ -6,7 +6,20 @@
         <h3 class="text-title-semibold text-text dark:text-text-dark leading-snug line-clamp-2">
           {{ reference.title }}
         </h3>
-        <p class="text-small text-text-secondary dark:text-text-dark-secondary mt-1.5 line-clamp-1">
+        <!-- Venue & CCF Rank -->
+        <div class="flex items-center gap-2 mt-1">
+          <p v-if="reference.venue" class="text-small text-text-secondary dark:text-text-dark-secondary">
+            {{ reference.venue }}
+          </p>
+          <span
+            v-if="reference.ccf_rank"
+            class="inline-flex items-center px-1.5 py-0.5 rounded text-caption font-semibold"
+            :class="ccfRankClass"
+          >
+            CCF-{{ reference.ccf_rank }}
+          </span>
+        </div>
+        <p class="text-small text-text-secondary dark:text-text-dark-secondary mt-1 line-clamp-1">
           {{ reference.authors.join(', ') }}
         </p>
       </div>
@@ -47,12 +60,26 @@
 
 <script setup lang="ts">
 import type { ReferenceResult } from '~/types/api';
+import { computed } from 'vue';
 
 interface Props {
   reference: ReferenceResult;
 }
 
-defineProps<Props>();
+const props = defineProps<Props>();
+
+const ccfRankClass = computed(() => {
+  switch (props.reference.ccf_rank) {
+    case 'A':
+      return 'bg-gradient-to-r from-amber-500/10 to-orange-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 dark:border-amber-400/20';
+    case 'B':
+      return 'bg-gradient-to-r from-blue-500/10 to-indigo-500/10 text-blue-700 dark:text-blue-300 border border-blue-500/20 dark:border-blue-400/20';
+    case 'C':
+      return 'bg-gradient-to-r from-emerald-500/10 to-teal-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 dark:border-emerald-400/20';
+    default:
+      return 'bg-surface-secondary dark:bg-surface-dark-secondary text-text-secondary dark:text-text-dark-secondary';
+  }
+});
 
 function formatUrl(url: string): string {
   try {
