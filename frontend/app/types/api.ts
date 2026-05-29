@@ -23,7 +23,6 @@ export interface PDFValidationResponse {
 export interface ReferenceResult {
   title: string;
   authors: string[];
-  venue?: string;
   status: string;
   hallucination_type?: HallucinationType;
   confidence: number;

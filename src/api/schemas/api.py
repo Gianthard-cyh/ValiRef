@@ -25,6 +25,7 @@ class ReferenceResult(BaseModel):
     title: str
     authors: List[str]
     venue: Optional[str] = None
+    ccf_rank: Optional[str] = None  # "A", "B", "C", or None
     status: str
     hallucination_type: Optional[str] = None
     confidence: float
