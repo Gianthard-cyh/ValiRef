@@ -21,7 +21,6 @@ from ...core.config import (
 from ...core.extract import PDFExtractor, TextExtractor
 from ...core.pipeline import ValidationPipeline
 from ...core.logger import get_logger
-from ...core.venue_rank import get_venue_rank_lookup
 from ..schemas.api import TaskStatus
 from ..services.queue import MessageQueue
 from ..services.task_store import TaskStore
@@ -119,18 +118,11 @@ class PDFValidationWorker:
                         try:
                             result = await pipeline.process_pdf(pdf_path, max_workers=5)
 
-                            venue_lookup = get_venue_rank_lookup()
                             references = [
                                 {
                                     "title": item.get("paper", {}).get("title", "Unknown"),
                                     "authors": item.get("paper", {}).get("authors", []),
                                     "venue": item.get("paper", {}).get("venue"),
-                                    "ccf_rank": venue_lookup.lookup(
-                                        item.get("paper", {}).get("venue")
-                                    ).ccf_rank
-                                    if item.get("paper", {}).get("venue")
-                                    and venue_lookup.lookup(item.get("paper", {}).get("venue"))
-                                    else None,
                                     "status": "real"
                                     if item.get("validation", {}).get("hallucination_type") == "Real"
                                     else "hallucination",
