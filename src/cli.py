@@ -23,6 +23,7 @@ from src.core.config import (
 )
 from src.core.search_cache import get_cache, clear_cache
 from src.core.logger import set_logger_mode
+from src.core.venue_rank import get_venue_rank_lookup
 from src.bench import BenchmarkRunner, print_results
 from src.cli_callbacks import CliCallback
 import asyncio
@@ -167,6 +168,8 @@ def _print_results(results: dict):
     """
     Print validation results in a nice table format.
     """
+    venue_rank_lookup = get_venue_rank_lookup()
+
     console.print(
         f"\n[bold]Validation Summary for {results.get('file', 'Unknown')}[/bold]"
     )
@@ -184,6 +187,7 @@ def _print_results(results: dict):
             authors = ", ".join(authors_list)
         else:
             authors = str(authors_list)
+        venue = paper.get("venue")
 
         validation = item.get("validation", {})
         # Handle cases where validation might be None or empty
@@ -214,6 +218,14 @@ def _print_results(results: dict):
 
         content = Text()
         content.append(f"Title: {title}\n", style="bold")
+        if venue:
+            rank_info = venue_rank_lookup.lookup(venue)
+            if rank_info:
+                content.append(f"Venue: {venue} ", style="dim")
+                content.append(f"[CCF-{rank_info.ccf_rank}]", style="bold cyan")
+                content.append("\n")
+            else:
+                content.append(f"Venue: {venue}\n", style="dim")
         if authors:
             content.append(f"Authors: {authors}\n", style="italic")
         content.append(f"Confidence: {confidence:.2f}\n")
