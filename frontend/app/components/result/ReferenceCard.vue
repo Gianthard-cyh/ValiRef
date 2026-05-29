@@ -8,8 +8,8 @@
         </h3>
         <p v-if="reference.venue" class="text-small text-text-secondary dark:text-text-dark-secondary mt-1">
           {{ reference.venue }}
-          <span v-if="reference.ccf_rank" class="inline-flex items-center px-1.5 py-0.5 rounded text-caption font-medium bg-primary/10 text-primary dark:bg-primary-dark/10 dark:text-primary-dark ml-1">
-            CCF-{{ reference.ccf_rank }}
+          <span v-if="ccfRank" class="inline-flex items-center px-1.5 py-0.5 rounded text-caption font-medium bg-primary/10 text-primary dark:bg-primary-dark/10 dark:text-primary-dark ml-1">
+            CCF-{{ ccfRank }}
           </span>
         </p>
         <p class="text-small text-text-secondary dark:text-text-dark-secondary mt-1 line-clamp-1">
@@ -53,12 +53,15 @@
 
 <script setup lang="ts">
 import type { ReferenceResult } from '~/types/api';
+import { lookupCcfRank } from '~/utils/venueRank';
 
 interface Props {
   reference: ReferenceResult;
 }
 
-defineProps<Props>();
+const props = defineProps<Props>();
+
+const ccfRank = computed(() => lookupCcfRank(props.reference.venue));
 
 function formatUrl(url: string): string {
   try {

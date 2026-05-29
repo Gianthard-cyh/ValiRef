@@ -24,7 +24,6 @@ export interface ReferenceResult {
   title: string;
   authors: string[];
   venue?: string;
-  ccf_rank?: string;
   status: string;
   hallucination_type?: HallucinationType;
   confidence: number;
