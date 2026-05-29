@@ -21,6 +21,7 @@ from ...core.config import (
 from ...core.extract import PDFExtractor, TextExtractor
 from ...core.pipeline import ValidationPipeline
 from ...core.logger import get_logger
+from ...core.venue_rank import get_venue_rank_lookup
 from ..schemas.api import TaskStatus
 from ..services.queue import MessageQueue
 from ..services.task_store import TaskStore
@@ -118,10 +119,17 @@ class PDFValidationWorker:
                         try:
                             result = await pipeline.process_pdf(pdf_path, max_workers=5)
 
-                            references = [
-                                {
-                                    "title": item.get("paper", {}).get("title", "Unknown"),
-                                    "authors": item.get("paper", {}).get("authors", []),
+                            venue_lookup = get_venue_rank_lookup()
+                            references = []
+                            for item in result.get("results", []):
+                                paper = item.get("paper", {})
+                                venue = paper.get("venue")
+                                rank_info = venue_lookup.lookup(venue) if venue else None
+                                references.append({
+                                    "title": paper.get("title", "Unknown"),
+                                    "authors": paper.get("authors", []),
+                                    "venue": venue,
+                                    "ccf_rank": rank_info.ccf_rank if rank_info else None,
                                     "status": "real"
                                     if item.get("validation", {}).get("hallucination_type") == "Real"
                                     else "hallucination",
@@ -135,9 +143,7 @@ class PDFValidationWorker:
                                         "reasoning", ""
                                     ),
                                     "evidence": item.get("validation", {}).get("evidence", []),
-                                }
-                                for item in result.get("results", [])
-                            ]
+                                })
 
                             hallucination_count = sum(
                                 1 for r in references if r["status"] == "hallucination"

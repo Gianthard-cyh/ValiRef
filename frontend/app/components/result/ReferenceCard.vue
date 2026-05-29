@@ -6,7 +6,13 @@
         <h3 class="text-title-semibold text-text dark:text-text-dark leading-snug line-clamp-2">
           {{ reference.title }}
         </h3>
-        <p class="text-small text-text-secondary dark:text-text-dark-secondary mt-1.5 line-clamp-1">
+        <p v-if="reference.venue" class="text-small text-text-secondary dark:text-text-dark-secondary mt-1">
+          {{ reference.venue }}
+          <span v-if="reference.ccf_rank" class="inline-flex items-center px-1.5 py-0.5 rounded text-caption font-medium bg-primary/10 text-primary dark:bg-primary-dark/10 dark:text-primary-dark ml-1">
+            CCF-{{ reference.ccf_rank }}
+          </span>
+        </p>
+        <p class="text-small text-text-secondary dark:text-text-dark-secondary mt-1 line-clamp-1">
           {{ reference.authors.join(', ') }}
         </p>
       </div>
