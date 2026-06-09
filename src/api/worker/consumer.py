@@ -122,6 +122,7 @@ class PDFValidationWorker:
                                 {
                                     "title": item.get("paper", {}).get("title", "Unknown"),
                                     "authors": item.get("paper", {}).get("authors", []),
+                                    "venue": item.get("paper", {}).get("venue"),
                                     "status": "real"
                                     if item.get("validation", {}).get("hallucination_type") == "Real"
                                     else "hallucination",

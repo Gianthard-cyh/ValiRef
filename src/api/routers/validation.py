@@ -13,6 +13,7 @@ from ..schemas.api import (
 )
 from ..services.pdf_storage import PDFStorage
 from ...core.config import API_MAX_UPLOAD_SIZE
+from ...core.venue_rank import get_venue_rank_lookup
 
 router = APIRouter(prefix="/validation", tags=["validation"])
 
@@ -77,6 +78,13 @@ async def get_result(request: Request, task_id: str):
         result = json.loads(result) or {}
     elif result is None:
         result = {}
+
+    # Enrich references with CCF rank
+    venue_rank_lookup = get_venue_rank_lookup()
+    for ref in result.get("references", []):
+        venue = ref.get("venue")
+        rank_info = venue_rank_lookup.lookup(venue) if venue else None
+        ref["ccf_rank"] = rank_info.ccf_rank if rank_info else None
 
     return PDFValidationResult(
         task_id=task["task_id"],
