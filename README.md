@@ -360,6 +360,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Academic search via [ArXiv](https://arxiv.org/), [Semantic Scholar](https://www.semanticscholar.org/), [OpenReview](https://openreview.net/), and [OpenAlex](https://openalex.org/)
 - CLI powered by [Typer](https://typer.tiangolo.com/) and [Rich](https://github.com/Textualize/rich)
 
+## Links
+
+[linux.do](linux.do)
+
 ---
 
 <div align="center">
