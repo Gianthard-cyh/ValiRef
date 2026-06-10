@@ -12,12 +12,14 @@ class TaskStatus(str, Enum):
     FAILED_PERMANENTLY = "failed_permanently"
 
 
-class PDFValidationResponse(BaseModel):
-    """PDF提交后的响应"""
+class ValidationResponse(BaseModel):
+    """验证请求提交后的响应"""
     task_id: str
     status: TaskStatus
     filename: str
     message: str
+
+
 
 
 class ReferenceResult(BaseModel):
@@ -33,8 +35,8 @@ class ReferenceResult(BaseModel):
     evidence: List[str] = []
 
 
-class PDFValidationResult(BaseModel):
-    """PDF完整验证结果"""
+class ValidationResult(BaseModel):
+    """完整验证结果"""
     task_id: str
     filename: str
     status: TaskStatus
@@ -48,6 +50,8 @@ class PDFValidationResult(BaseModel):
     created_at: str
     completed_at: Optional[str] = None
     duration_seconds: Optional[float] = None
+
+
 
 
 class TaskStatusResponse(BaseModel):

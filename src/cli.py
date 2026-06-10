@@ -10,7 +10,7 @@ from langchain_deepseek import ChatDeepSeek
 
 from src.core.pipeline import ValidationPipeline
 from src.core.detector import HallucinationDetector
-from src.core.extract import PDFExtractor, TextExtractor
+from src.core.extract import PDFExtractor, TextExtractor, BibTeXExtractor, Extractor
 from src.core.tools import AggregateSearchFactory
 from src.core.config import (
     DEEPSEEK_API_KEY,
@@ -79,17 +79,19 @@ def create_detector(
 
 
 def create_pipeline(
+    extractor: Optional[Extractor] = None,
     callbacks: Optional[list] = None,
     search_mode: str = "local",
 ) -> ValidationPipeline:
     """Factory function to create a ValidationPipeline with all dependencies."""
     llm = create_llm()
-    text_extractor = TextExtractor(llm=llm)
-    pdf_extractor = PDFExtractor(text_extractor=text_extractor)
+    if extractor is None:
+        text_extractor = TextExtractor(llm=llm)
+        extractor = PDFExtractor(text_extractor=text_extractor)
     detector = create_detector(llm=llm, search_mode=search_mode)
 
     return ValidationPipeline(
-        extractor=pdf_extractor,
+        extractor=extractor,
         detector=detector,
         callbacks=callbacks or [],
     )
@@ -97,7 +99,7 @@ def create_pipeline(
 
 @app.command()
 def validate(
-    pdf_path: str = typer.Argument(..., help="Path to the PDF file to validate"),
+    file_path: str = typer.Argument(..., help="Path to the PDF or BibTeX file to validate"),
     max_workers: int = typer.Option(
         5, "--workers", "-w", help="Number of concurrent validation threads"
     ),
@@ -118,18 +120,29 @@ def validate(
     ),
 ):
     """
-    Validate references in a PDF file.
+    Validate references in a PDF or BibTeX file.
     """
-    path = Path(pdf_path)
+    path = Path(file_path)
     if not path.exists():
-        console.print(f"[bold red]Error:[/bold red] File not found: {pdf_path}")
+        console.print(f"[bold red]Error:[/bold red] File not found: {file_path}")
         raise typer.Exit(code=1)
 
     async def run_pipeline():
         callback = (
             CliCallback(console, show_metrics=show_metrics) if not verbose else None
         )
+
+        llm = create_llm()
+        if path.suffix.lower() == ".pdf":
+            extractor = PDFExtractor(text_extractor=TextExtractor(llm=llm))
+        elif path.suffix.lower() == ".bib":
+            extractor = BibTeXExtractor()
+        else:
+            console.print(f"[bold red]Error:[/bold red] Unsupported file format: {path.suffix}")
+            raise typer.Exit(code=1)
+
         pipeline = create_pipeline(
+            extractor=extractor,
             callbacks=[callback] if callback else [],
             search_mode=search_mode,
         )
@@ -139,7 +152,7 @@ def validate(
             )
             console.print(f"[bold blue]Search mode:[/bold blue] {search_mode}")
 
-        results = await pipeline.process_pdf(str(path), max_workers=max_workers)
+        results = await pipeline.process(str(path), max_workers=max_workers)
 
         # 添加工具统计到结果（如果有callback且启用了metrics）
         if callback and callback.metrics:

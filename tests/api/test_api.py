@@ -239,12 +239,12 @@ class TestMessageQueue:
         return queue
 
     @pytest.mark.asyncio
-    async def test_publish_pdf_task(self, message_queue):
-        """测试发布PDF任务消息"""
-        await message_queue.publish_pdf_task(
+    async def test_publish_validation_task(self, message_queue):
+        """测试发布验证任务消息"""
+        await message_queue.publish_validation_task(
             task_id="task-001",
             filename="paper.pdf",
-            pdf_path="/tmp/paper.pdf",
+            file_path="/tmp/paper.pdf",
             search_mode="local"
         )
 
@@ -314,10 +314,10 @@ class TestAPIRoutes:
         assert data["status"] == "pending"
         assert data["filename"] == "test.pdf"
         assert "task_id" in data
-        mock_app_state.queue.publish_pdf_task.assert_called_once()
+        mock_app_state.queue.publish_validation_task.assert_called_once()
 
     def test_submit_pdf_invalid_file_type(self, mock_app_state):
-        """测试上传非PDF文件返回错误"""
+        """测试上传非PDF/BibTeX文件返回错误"""
         from src.api.main import app
 
         with patch.object(app, 'state', mock_app_state):
@@ -331,7 +331,7 @@ class TestAPIRoutes:
             )
 
         assert response.status_code == 400
-        assert "Only PDF files are allowed" in response.json()["detail"]
+        assert "Only PDF or BibTeX files are allowed" in response.json()["detail"]
 
     def test_get_result_success(self, mock_app_state):
         """测试查询PDF验证结果"""
@@ -512,7 +512,7 @@ class TestPDFValidationWorker:
 
         # Mock pipeline instance
         mock_pipeline = MagicMock()
-        mock_pipeline.process_pdf = AsyncMock(return_value={
+        mock_pipeline.process = AsyncMock(return_value={
             "references_count": 2,
             "validated_count": 2,
             "duration_seconds": 10.5,
@@ -568,7 +568,7 @@ class TestPDFValidationWorker:
         # Mock pipeline instance
         mock_pipeline = MagicMock()
         # Simulate pipeline failure
-        mock_pipeline.process_pdf = AsyncMock(side_effect=Exception("Processing error"))
+        mock_pipeline.process = AsyncMock(side_effect=Exception("Processing error"))
         mock_pipeline_class.return_value = mock_pipeline
 
         # Mock callback

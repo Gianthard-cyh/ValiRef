@@ -13,12 +13,13 @@ export type ErrorCode =
   | 'search_failed'
   | 'agent_parse_error';
 
-export interface PDFValidationResponse {
+export interface ValidationResponse {
   task_id: string;
   status: TaskStatus;
   filename: string;
   message: string;
 }
+
 
 export interface ReferenceResult {
   title: string;
@@ -32,7 +33,7 @@ export interface ReferenceResult {
   evidence: string[];
 }
 
-export interface PDFValidationResult {
+export interface ValidationResult {
   task_id: string;
   filename: string;
   status: TaskStatus;
@@ -47,6 +48,7 @@ export interface PDFValidationResult {
   completed_at?: string;
   duration_seconds?: number;
 }
+
 
 export type TaskStage = 'extraction' | 'validation' | 'completed';
 
@@ -71,5 +73,5 @@ export interface TaskHistoryItem {
   status: TaskStatus;
   error_code?: ErrorCode;
   created_at: string;
-  result?: PDFValidationResult;
+  result?: ValidationResult;
 }

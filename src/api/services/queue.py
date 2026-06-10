@@ -66,12 +66,14 @@ class MessageQueue:
             durable=False,  # No need to persist, just for real-time updates
         )
 
-    async def publish_pdf_task(self, task_id: str, filename: str, pdf_path: str, search_mode: str = "local", retry_count: int = 0):
+    async def publish_validation_task(self, task_id: str, filename: str, file_path: str = None, search_mode: str = "local", retry_count: int = 0, **kwargs):
         """Publish task to main queue."""
+        # Backward compatibility: accept pdf_path as well
+        actual_path = file_path or kwargs.get("pdf_path")
         message = {
             "task_id": task_id,
             "filename": filename,
-            "pdf_path": pdf_path,
+            "file_path": actual_path,
             "search_mode": search_mode,
             "retry_count": retry_count,
             "published_at": datetime.now().isoformat(),
@@ -84,6 +86,7 @@ class MessageQueue:
             ),
             routing_key=RABBITMQ_QUEUE_NAME,
         )
+
 
     async def publish_to_dlq(self, task_id: str, filename: str, pdf_path: str, search_mode: str, retry_count: int, error_msg: str):
         """Publish permanently failed message to DLQ."""

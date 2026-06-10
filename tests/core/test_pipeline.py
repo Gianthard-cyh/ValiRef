@@ -47,8 +47,8 @@ class TestValidationPipeline:
             assert pipeline.callbacks == []
 
     @pytest.mark.asyncio
-    async def test_process_pdf_with_mock_dependencies(self, tmp_path):
-        """Test process_pdf with fully mocked dependencies."""
+    async def test_process_with_mock_dependencies(self, tmp_path):
+        """Test process with fully mocked dependencies."""
         # Create a temporary PDF file
         pdf_file = tmp_path / "test.pdf"
         pdf_file.write_bytes(b"fake pdf content")
@@ -87,7 +87,7 @@ class TestValidationPipeline:
         )
 
         # Execute
-        result = await pipeline.process_pdf(str(pdf_file), max_workers=1)
+        result = await pipeline.process(str(pdf_file), max_workers=1)
 
         # Verify
         assert result["file"] == "test.pdf"
@@ -99,8 +99,8 @@ class TestValidationPipeline:
         mock_detector.check_reference.assert_called_once_with(mock_paper)
 
     @pytest.mark.asyncio
-    async def test_process_pdf_notifies_callbacks(self, tmp_path):
-        """Test process_pdf notifies callbacks at each stage."""
+    async def test_process_notifies_callbacks(self, tmp_path):
+        """Test process notifies callbacks at each stage."""
         pdf_file = tmp_path / "test.pdf"
         pdf_file.write_bytes(b"fake pdf content")
 
@@ -136,7 +136,7 @@ class TestValidationPipeline:
             callbacks=[mock_callback],
         )
 
-        await pipeline.process_pdf(str(pdf_file), max_workers=1)
+        await pipeline.process(str(pdf_file), max_workers=1)
 
         # Verify callbacks were called
         mock_callback.on_pipeline_start.assert_called_once_with("test.pdf")
@@ -148,8 +148,8 @@ class TestValidationPipeline:
         mock_callback.on_pipeline_end.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_process_pdf_raises_on_extraction_error(self, tmp_path):
-        """Test process_pdf raises ExtractionError on extraction failure."""
+    async def test_process_raises_on_extraction_error(self, tmp_path):
+        """Test process raises ExtractionError on extraction failure."""
         pdf_file = tmp_path / "test.pdf"
         pdf_file.write_bytes(b"fake pdf content")
 
@@ -165,13 +165,13 @@ class TestValidationPipeline:
         )
 
         with pytest.raises(ExtractionError):
-            await pipeline.process_pdf(str(pdf_file), max_workers=1)
+            await pipeline.process(str(pdf_file), max_workers=1)
 
         mock_callback.on_error.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_process_pdf_handles_empty_references(self, tmp_path):
-        """Test process_pdf when no references are found."""
+    async def test_process_handles_empty_references(self, tmp_path):
+        """Test process when no references are found."""
         pdf_file = tmp_path / "test.pdf"
         pdf_file.write_bytes(b"fake pdf content")
 
@@ -183,15 +183,15 @@ class TestValidationPipeline:
             detector=MagicMock(),
         )
 
-        result = await pipeline.process_pdf(str(pdf_file), max_workers=1)
+        result = await pipeline.process(str(pdf_file), max_workers=1)
 
         assert result["references_count"] == 0
         assert result["validated_count"] == 0
         assert result["status"] == "completed"
 
     @pytest.mark.asyncio
-    async def test_process_pdf_handles_validation_errors(self, tmp_path):
-        """Test process_pdf handles validation errors for individual references."""
+    async def test_process_handles_validation_errors(self, tmp_path):
+        """Test process handles validation errors for individual references."""
         pdf_file = tmp_path / "test.pdf"
         pdf_file.write_bytes(b"fake pdf content")
 
@@ -221,7 +221,7 @@ class TestValidationPipeline:
             callbacks=[mock_callback],
         )
 
-        result = await pipeline.process_pdf(str(pdf_file), max_workers=1)
+        result = await pipeline.process(str(pdf_file), max_workers=1)
 
         # Should still complete, but with error result for that reference
         assert result["status"] == "completed"
@@ -229,8 +229,8 @@ class TestValidationPipeline:
         assert result["validated_count"] == 1  # Error is captured as a result
         assert result["results"][0]["status"] == "error"
 
-    def test_process_pdf_raises_for_missing_file(self):
-        """Test process_pdf raises error for non-existent file."""
+    def test_process_raises_for_missing_file(self):
+        """Test process raises error for non-existent file."""
         mock_callback = AsyncMock()
 
         pipeline = ValidationPipeline(
@@ -243,11 +243,11 @@ class TestValidationPipeline:
             # asyncio.run to handle the async nature
             import asyncio
 
-            asyncio.run(pipeline.process_pdf("/nonexistent/file.pdf"))
+            asyncio.run(pipeline.process("/nonexistent/file.pdf"))
 
     @pytest.mark.asyncio
-    async def test_process_pdf_concurrent_validation(self, tmp_path):
-        """Test process_pdf validates multiple references concurrently."""
+    async def test_process_concurrent_validation(self, tmp_path):
+        """Test process validates multiple references concurrently."""
         pdf_file = tmp_path / "test.pdf"
         pdf_file.write_bytes(b"fake pdf content")
 
@@ -283,8 +283,50 @@ class TestValidationPipeline:
             detector=mock_detector,
         )
 
-        result = await pipeline.process_pdf(str(pdf_file), max_workers=2)
+        result = await pipeline.process(str(pdf_file), max_workers=2)
 
         assert result["references_count"] == 3
         assert result["validated_count"] == 3
         assert mock_detector.check_reference.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_process_bibtex_file(self, tmp_path):
+        """Test process with BibTeXExtractor mock."""
+        bib_file = tmp_path / "test.bib"
+        bib_file.write_text("dummy")
+
+        mock_paper = Paper(
+            source="bibtex",
+            id="N/A",
+            title="BibTeX Paper",
+            abstract="Abstract",
+            authors=["Author"],
+            published_date="2023",
+            url="N/A",
+        )
+
+        mock_extractor = MagicMock()
+        mock_extractor.extract = AsyncMock(return_value=[mock_paper])
+
+        mock_validation_result = MagicMock()
+        mock_validation_result.model_dump.return_value = {
+            "hallucination_type": "Real",
+            "confidence": 0.9,
+            "reasoning": "Found",
+            "evidence": [],
+        }
+
+        mock_detector = MagicMock()
+        mock_detector.check_reference = AsyncMock(return_value=mock_validation_result)
+
+        pipeline = ValidationPipeline(
+            extractor=mock_extractor,
+            detector=mock_detector,
+        )
+
+        result = await pipeline.process(str(bib_file), max_workers=1)
+
+        assert result["file"] == "test.bib"
+        assert result["references_count"] == 1
+        assert result["validated_count"] == 1
+        mock_extractor.extract.assert_called_once()

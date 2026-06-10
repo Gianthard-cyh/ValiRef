@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from src.cli import create_llm, create_detector, create_pipeline
 from src.core.detector import HallucinationDetector
+from src.core.extract import BibTeXExtractor
 
 
 class TestCreateLLM:
@@ -145,6 +146,30 @@ class TestCreatePipeline:
 
             call_kwargs = mock_pipeline_cls.call_args.kwargs
             assert call_kwargs["callbacks"] == [mock_callback]
+
+    def test_create_pipeline_with_bibtex_extractor(self):
+        """Test create_pipeline accepts a BibTeXExtractor instance."""
+        mock_extractor = MagicMock(spec=BibTeXExtractor)
+
+        with (
+            patch("src.cli.create_llm") as mock_create_llm,
+            patch("src.cli.create_detector") as mock_create_detector,
+            patch("src.cli.ValidationPipeline") as mock_pipeline_cls,
+        ):
+            mock_llm = MagicMock()
+            mock_create_llm.return_value = mock_llm
+
+            mock_detector = MagicMock()
+            mock_create_detector.return_value = mock_detector
+
+            create_pipeline(extractor=mock_extractor)
+
+            # Verify TextExtractor and PDFExtractor were NOT called
+            # (since extractor was provided)
+            mock_pipeline_cls.assert_called_once()
+            call_kwargs = mock_pipeline_cls.call_args.kwargs
+            assert call_kwargs["extractor"] == mock_extractor
+            assert call_kwargs["detector"] == mock_detector
 
 
 class TestDependencyInjectionE2E:

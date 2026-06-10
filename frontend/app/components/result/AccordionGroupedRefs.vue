@@ -96,7 +96,7 @@
 </template>
 
 <script setup lang="ts">
-import type { PDFValidationResult, ReferenceResult } from '~/types/api';
+import type { ValidationResult, ReferenceResult } from '~/types/api';
 
 interface Group {
   type: string;
@@ -105,7 +105,7 @@ interface Group {
 }
 
 interface Props {
-  result: PDFValidationResult;
+  result: ValidationResult;
 }
 
 const props = defineProps<Props>();
