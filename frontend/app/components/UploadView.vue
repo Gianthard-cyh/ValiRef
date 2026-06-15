@@ -6,7 +6,7 @@
         <!-- Title -->
         <div class="mb-10 text-center">
           <h1 class="text-display mb-3">
-            验证 PDF 引用
+            验证学术引用
           </h1>
           <p class="text-body text-text-secondary dark:text-text-dark-secondary max-w-md mx-auto">
             智能检测学术文献中的引用问题
@@ -70,7 +70,7 @@
               <span class="i-lucide-file-text w-6 h-6 text-text-tertiary dark:text-text-dark-tertiary" />
             </div>
             <div class="space-y-2">
-              <p class="text-title">点击或拖放 PDF 文件</p>
+              <p class="text-title">点击或拖放 PDF 或 BibTeX 文件</p>
               <p class="text-body text-text-secondary dark:text-text-dark-secondary">最大 10MB</p>
             </div>
           </div>
@@ -89,7 +89,7 @@
             </button>
           </div>
 
-          <input ref="fileInput" type="file" accept=".pdf" class="hidden" @change="handleFileSelect">
+          <input ref="fileInput" type="file" accept=".pdf,.bib" class="hidden" @change="handleFileSelect">
         </div>
 
         <!-- Submit -->
@@ -151,7 +151,9 @@ function handleFileSelect(e: Event) {
 function handleDrop(e: DragEvent) {
   isDragging.value = false;
   const file = e.dataTransfer?.files[0];
-  if (file?.type === 'application/pdf') selectedFile.value = file;
+  if (file && (file.type === 'application/pdf' || file.name.endsWith('.bib'))) {
+    selectedFile.value = file;
+  }
 }
 
 async function submit() {

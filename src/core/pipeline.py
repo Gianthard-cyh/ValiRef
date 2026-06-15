@@ -3,7 +3,7 @@ from typing import Dict, Any, List, Optional
 from pathlib import Path
 import time
 
-from .extract import PDFExtractor
+from .extract import Extractor, PDFExtractor
 from .detector import HallucinationDetector
 from .logger import logger
 from .exceptions import (
@@ -26,7 +26,7 @@ class ValidationPipeline:
 
     def __init__(
         self,
-        extractor: Optional[PDFExtractor] = None,
+        extractor: Optional[Extractor] = None,
         detector: Optional[HallucinationDetector] = None,
         callbacks: Optional[List[ValidationCallback]] = None,
     ):
@@ -36,12 +36,12 @@ class ValidationPipeline:
         self.callbacks = callbacks or []
         self.state = PipelineState()
 
-    async def process_pdf(self, pdf_path: str, max_workers: int = 10) -> Dict[str, Any]:
+    async def process(self, file_path: str, max_workers: int = 10) -> Dict[str, Any]:
         """
-        Process a PDF file: extract references and validate them concurrently.
+        Process a file: extract references and validate them concurrently.
         """
         start_time = time.time()
-        path = Path(pdf_path)
+        path = Path(file_path)
 
         self._check_file_exists(path)
 
@@ -128,7 +128,7 @@ class ValidationPipeline:
 
     def _check_file_exists(self, path: Path):
         if not path.exists():
-            error = FileNotFoundError(f"PDF file not found: {path}")
+            error = FileNotFoundError(f"File not found: {path}")
             self._notify_callbacks("on_error", error)
             raise error
 

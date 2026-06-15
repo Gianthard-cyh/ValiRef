@@ -1,12 +1,13 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Request
 from fastapi.responses import StreamingResponse
 from uuid import uuid4
+from pathlib import Path
 import json
 import asyncio
 
 from ..schemas.api import (
-    PDFValidationResponse,
-    PDFValidationResult,
+    ValidationResponse,
+    ValidationResult,
     TaskStatusResponse,
     QueueStatsResponse,
     TaskStatus,
@@ -18,17 +19,18 @@ from ...core.venue_rank import get_venue_rank_lookup
 router = APIRouter(prefix="/validation", tags=["validation"])
 
 
-@router.post("/submit", response_model=PDFValidationResponse)
-async def submit_pdf(
+@router.post("/submit", response_model=ValidationResponse)
+async def submit_validation(
     request: Request,
-    file: UploadFile = File(..., description="PDF file to validate"),
+    file: UploadFile = File(..., description="PDF or BibTeX file to validate"),
     search_mode: str = Form(
         default="local", description="Search mode: local or online"
     ),
 ):
-    """提交PDF验证请求"""
-    if not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are allowed")
+    """提交验证请求"""
+    ext = Path(file.filename).suffix.lower()
+    if ext not in (".pdf", ".bib"):
+        raise HTTPException(status_code=400, detail="Only PDF or BibTeX files are allowed")
 
     content = await file.read()
     if len(content) > API_MAX_UPLOAD_SIZE * 1024 * 1024:
@@ -39,13 +41,13 @@ async def submit_pdf(
     task_id = str(uuid4())
 
     pdf_storage = PDFStorage()
-    pdf_path = await pdf_storage.save(task_id, file.filename, content)
+    file_path = await pdf_storage.save(task_id, file.filename, content)
 
     task_store = request.app.state.task_store
     await task_store.create_task(
         task_id=task_id,
         filename=file.filename,
-        pdf_path=pdf_path,
+        pdf_path=file_path,
         request_data={"search_mode": search_mode, "original_filename": file.filename},
     )
 
@@ -55,17 +57,17 @@ async def submit_pdf(
     tasks_active.labels(status="pending").inc()
 
     queue = request.app.state.queue
-    await queue.publish_pdf_task(task_id, file.filename, pdf_path, search_mode)
+    await queue.publish_validation_task(task_id, file.filename, file_path, search_mode)
 
-    return PDFValidationResponse(
+    return ValidationResponse(
         task_id=task_id,
         status=TaskStatus.PENDING,
         filename=file.filename,
-        message="PDF validation request queued successfully",
+        message="Validation request queued successfully",
     )
 
 
-@router.get("/result/{task_id}", response_model=PDFValidationResult)
+@router.get("/result/{task_id}", response_model=ValidationResult)
 async def get_result(request: Request, task_id: str):
     """查询PDF验证结果"""
     task_store = request.app.state.task_store
@@ -86,7 +88,7 @@ async def get_result(request: Request, task_id: str):
         rank_info = venue_rank_lookup.lookup(venue) if venue else None
         ref["ccf_rank"] = rank_info.ccf_rank if rank_info else None
 
-    return PDFValidationResult(
+    return ValidationResult(
         task_id=task["task_id"],
         filename=task["filename"],
         status=task["status"],

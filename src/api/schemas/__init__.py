@@ -1,3 +1,3 @@
-from .api import PDFValidationResponse, PDFValidationResult, TaskStatusResponse, QueueStatsResponse, TaskStatus
+from .api import ValidationResponse, ValidationResult, TaskStatusResponse, QueueStatsResponse, TaskStatus
 
-__all__ = ["PDFValidationResponse", "PDFValidationResult", "TaskStatusResponse", "QueueStatsResponse", "TaskStatus"]
+__all__ = ["ValidationResponse", "ValidationResult", "TaskStatusResponse", "QueueStatsResponse", "TaskStatus"]

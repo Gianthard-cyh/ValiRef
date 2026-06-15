@@ -21,10 +21,10 @@
 </template>
 
 <script setup lang="ts">
-import type { PDFValidationResult } from '~/types/api';
+import type { ValidationResult } from '~/types/api';
 
 interface Props {
-  result: PDFValidationResult;
+  result: ValidationResult;
 }
 
 const props = defineProps<Props>();

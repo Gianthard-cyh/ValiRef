@@ -1,4 +1,4 @@
-import type { TaskHistoryItem, PDFValidationResult, TaskStatusResponse, TaskStatus, ErrorCode } from '~/types/api';
+import type { TaskHistoryItem, ValidationResult, TaskStatusResponse, TaskStatus, ErrorCode } from '~/types/api';
 
 export type PageState = 'idle' | 'uploading' | 'processing' | 'completed' | 'error';
 
@@ -14,7 +14,7 @@ export const useTaskStore = defineStore('task', () => {
   // Current task
   const currentTaskId = ref<string>('');
   const currentStatus = ref<TaskStatusResponse | null>(null);
-  const currentResult = ref<PDFValidationResult | null>(null);
+  const currentResult = ref<ValidationResult | null>(null);
   const currentPDFFile = ref<File | null>(null);
 
   // History
@@ -79,7 +79,7 @@ export const useTaskStore = defineStore('task', () => {
   }
 
   // Add task to history
-  function addToHistory(taskId: string, filename: string, status: TaskStatus, result?: PDFValidationResult, errorCodeFromStatus?: ErrorCode) {
+  function addToHistory(taskId: string, filename: string, status: TaskStatus, result?: ValidationResult, errorCodeFromStatus?: ErrorCode) {
     const existingIndex = taskHistory.value.findIndex(t => t.task_id === taskId);
     const item: TaskHistoryItem = {
       task_id: taskId,

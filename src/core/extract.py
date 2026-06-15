@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import List, Optional, Callable, Dict, Tuple, Match, Set
 import re
 import fitz  # pymupdf
+import bibtexparser
 from langchain_deepseek import ChatDeepSeek
 from langchain_core.prompts import ChatPromptTemplate
 
@@ -563,6 +564,81 @@ class PDFExtractor(Extractor):
 
     async def extract_batch(self, file_paths: List[str]) -> List[List[Paper]]:
         """Extract lists of referenced papers from a batch of PDF file paths."""
+        results = []
+        for file_path in file_paths:
+            results.append(await self.extract(file_path))
+        return results
+
+
+class BibTeXExtractor(Extractor):
+    async def extract(
+        self,
+        file_path: str,
+        on_progress: Optional[Callable[[int, List[Reference]], None]] = None,
+    ) -> List[Paper]:
+        """
+        Extract a list of referenced papers from a BibTeX file path.
+        If on_progress is provided, streams partial results during extraction.
+        """
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                db = bibtexparser.load(f)
+        except Exception as e:
+            raise ExtractionError(
+                message=f"Failed to parse BibTeX file: {str(e)}",
+                error_code=ErrorCode.EXTRACTION_FAILED,
+            ) from e
+
+        papers = []
+        for entry in db.entries:
+            title = entry.get("title", "").strip()
+            if not title:
+                continue
+
+            authors = [
+                a.strip()
+                for a in entry.get("author", "").split(" and ")
+                if a.strip()
+            ]
+            venue = entry.get("journal") or entry.get("booktitle")
+            arxiv_id = (
+                entry.get("eprint")
+                if entry.get("archiveprefix", "").lower() == "arxiv"
+                else None
+            )
+
+            paper = Paper(
+                source="bibtex",
+                id=arxiv_id or "N/A",
+                title=title,
+                abstract=entry.get("abstract", "N/A"),
+                authors=authors,
+                published_date=entry.get("year", "N/A"),
+                url=entry.get("url") or entry.get("doi") or "N/A",
+                venue=venue,
+            )
+            papers.append(paper)
+
+            if on_progress:
+                ref = Reference(
+                    title=paper.title,
+                    authors=paper.authors,
+                    date=paper.published_date,
+                    arxiv_id=arxiv_id,
+                    venue=venue,
+                )
+                on_progress(len(papers), [ref])
+
+        if not papers:
+            raise ExtractionError(
+                message="No valid references found in BibTeX file",
+                error_code=ErrorCode.NO_REFERENCES_FOUND,
+            )
+
+        return papers
+
+    async def extract_batch(self, file_paths: List[str]) -> List[List[Paper]]:
+        """Extract lists of referenced papers from a batch of BibTeX file paths."""
         results = []
         for file_path in file_paths:
             results.append(await self.extract(file_path))

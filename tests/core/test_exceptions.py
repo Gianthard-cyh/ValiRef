@@ -81,7 +81,7 @@ class TestPipelineExceptions:
         )
 
         with pytest.raises(ExtractionError) as exc_info:
-            await pipeline.process_pdf(str(pdf_file))
+            await pipeline.process(str(pdf_file))
 
         assert "PDF parse error" in str(exc_info.value)
 
@@ -135,7 +135,7 @@ class TestPipelineExceptions:
             detector=mock_detector,
         )
 
-        result = await pipeline.process_pdf(str(pdf_file), max_workers=1)
+        result = await pipeline.process(str(pdf_file), max_workers=1)
 
         # Task should complete successfully
         assert result["status"] == "completed"
@@ -176,7 +176,7 @@ class TestPipelineExceptions:
             detector=mock_detector,
         )
 
-        result = await pipeline.process_pdf(str(pdf_file), max_workers=1)
+        result = await pipeline.process(str(pdf_file), max_workers=1)
 
         assert result["status"] == "completed"
         assert result["results"][0]["status"] == "error"
@@ -214,7 +214,7 @@ class TestPipelineExceptions:
         )
 
         with pytest.raises(RuntimeError) as exc_info:
-            await pipeline.process_pdf(str(pdf_file), max_workers=1)
+            await pipeline.process(str(pdf_file), max_workers=1)
 
         assert "Unexpected error" in str(exc_info.value)
 
@@ -268,7 +268,7 @@ class TestPipelineExceptions:
             detector=mock_detector,
         )
 
-        result = await pipeline.process_pdf(str(pdf_file), max_workers=1)
+        result = await pipeline.process(str(pdf_file), max_workers=1)
 
         # Pipeline should complete successfully despite timeout
         assert result["status"] == "completed"

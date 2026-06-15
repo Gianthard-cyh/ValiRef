@@ -24,6 +24,7 @@ dependencies = [
     "torch>=2.10.0",
     "arxiv>=2.4.0",
     "asyncpg>=0.29.0",
+    "bibtexparser>=1.4.0",
     "blinker>=1.9.0",
     "ddgs>=9.10.0",
     "fastapi>=0.110.0",

@@ -18,7 +18,7 @@ from ...core.config import (
     WORKER_CONCURRENCY,
     WORKER_PREFETCH_COUNT,
 )
-from ...core.extract import PDFExtractor, TextExtractor
+from ...core.extract import PDFExtractor, TextExtractor, BibTeXExtractor
 from ...core.pipeline import ValidationPipeline
 from ...core.logger import get_logger
 from ..schemas.api import TaskStatus
@@ -84,7 +84,7 @@ class PDFValidationWorker:
                 data = json.loads(message.body.decode())
                 task_id = data["task_id"]
                 filename = data["filename"]
-                pdf_path = data["pdf_path"]
+                file_path = data.get("file_path") or data["pdf_path"]
                 search_mode = data.get("search_mode", "local")
                 retry_count = data.get("retry_count", 0)
 
@@ -107,16 +107,24 @@ class PDFValidationWorker:
                         self.task_store, task_id, self.queue
                     )
 
+                    # Select extractor based on file extension
+                    from pathlib import Path as PathLib
+                    ext = PathLib(file_path).suffix.lower()
+                    if ext == ".bib":
+                        extractor = BibTeXExtractor()
+                    else:
+                        extractor = self.extractor
+
                     # Create pipeline with progress callback
                     pipeline = ValidationPipeline(
-                        extractor=self.extractor,
+                        extractor=extractor,
                         detector=self.detector,
                         callbacks=[progress_callback],
                     )
 
                     async with self.semaphore:
                         try:
-                            result = await pipeline.process_pdf(pdf_path, max_workers=5)
+                            result = await pipeline.process(file_path, max_workers=5)
 
                             references = [
                                 {
@@ -223,10 +231,11 @@ class PDFValidationWorker:
         tasks_failed.labels(permanent="true").inc()
 
         # Send to DLQ manually (since RabbitMQ doesn't know about max retries)
+        file_path = data.get("file_path") or data["pdf_path"]
         await self.queue.publish_to_dlq(
             task_id,
             data["filename"],
-            data["pdf_path"],
+            file_path,
             data.get("search_mode", "local"),
             retry_count,
             error_msg,
