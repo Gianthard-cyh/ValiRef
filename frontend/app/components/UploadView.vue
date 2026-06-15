@@ -1,8 +1,8 @@
 <template>
   <div class="min-h-[calc(100vh-3.5rem)] flex flex-col items-center px-6">
     <!-- Content container - matches header width -->
-    <div class="w-full max-w-5xl bg-surface dark:bg-surface-dark min-h-[calc(100vh-3.5rem)] border-x border-border dark:border-border-dark py-12 relative">
-      <div class="px-12">
+    <div class="w-full max-w-5xl bg-surface dark:bg-surface-dark flex-1 flex flex-col border-x border-border dark:border-border-dark relative">
+      <div class="px-12 pt-12 flex-1">
         <!-- Title -->
         <div class="mb-10 text-center">
           <h1 class="text-display mb-3">
@@ -108,6 +108,18 @@
           {{ errorMessage }}
         </div>
       </div>
+
+      <!-- Footer -->
+      <footer class="py-4 text-center text-caption text-text-tertiary dark:text-text-dark-tertiary border-t border-border dark:border-border-dark">
+        <a
+          href="https://beian.miit.gov.cn/"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="hover:text-text-secondary dark:hover:text-text-dark-secondary transition-colors"
+        >
+          滇ICP备2025074003号-2
+        </a>
+      </footer>
     </div>
   </div>
 </template>
